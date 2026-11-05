@@ -1,0 +1,6 @@
+# Local verification evidence, downloaded tools and private configuration backups
+work/
+node_modules/
+dist/
+coverage/
+web-ext-artifacts/
