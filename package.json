@@ -1,11 +1,13 @@
 {
-  "name": "timehorbur",
+  "name": "timeharbor",
   "version": "0.1.0",
   "private": true,
   "type": "module",
   "description": "A local-first Firefox extension for mindful browsing, time limits and healthy breaks.",
   "license": "MIT",
-  "engines": { "node": ">=22.14" },
+  "engines": {
+    "node": ">=22.14"
+  },
   "scripts": {
     "build": "node scripts/build.mjs",
     "typecheck": "tsc --noEmit",
@@ -13,6 +15,18 @@
     "test:coverage": "node --experimental-strip-types --experimental-test-coverage --test tests/*.test.ts",
     "lint:extension": "web-ext lint --source-dir dist --warnings-as-errors",
     "package": "npm run build && web-ext build --source-dir dist --artifacts-dir outputs --overwrite-dest",
-    "start": "npm run build && web-ext run --source-dir dist"
+    "start": "npm run build && web-ext run --source-dir dist",
+    "test:firefox": "node --experimental-strip-types scripts/firefox-smoke.mjs",
+    "format:check": "prettier --check src tests public scripts/build.mjs scripts/firefox-smoke.mjs scripts/firefox-harness.js"
+  },
+  "devDependencies": {
+    "@types/firefox-webext-browser": "^143.0.1",
+    "@types/node": "^26.6.6",
+    "@types/selenium-webdriver": "^4.35.7",
+    "esbuild": "^0.28.2",
+    "prettier": "^3.9.10",
+    "selenium-webdriver": "^4.51.0",
+    "typescript": "^7.0.2",
+    "web-ext": "^10.8.0"
   }
 }

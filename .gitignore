@@ -4,3 +4,5 @@ node_modules/
 dist/
 coverage/
 web-ext-artifacts/
+outputs/
+docs/ecc-installation.json

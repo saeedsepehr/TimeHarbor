@@ -1,0 +1,29 @@
+# Roadmap
+
+## 0.1 alpha — implemented
+
+- Pure quota/break/reporting core and strict configuration validation.
+- Firefox MV3 event-page adapter and network-level manual blocking.
+- PIN verifier, settings authorization, pause limits and expiring sessions.
+- Local reports, date ranges and CSV export.
+- Site rules, reusable break profiles and bulk copying.
+- Seven-language menu surface, Persian/Arabic RTL, popup and lock page.
+- Unit/security tests, isolated Firefox smoke harness and English/Persian UI previews.
+
+## Before a public stable release
+
+1. Add a reviewed, licensed adult-domain list provider with bounded parsing, cached last-known-good data, update status and PIN-protected exceptions. Do not download executable logic or send browsing domains to a classification service.
+2. Validate media behavior on YouTube and Aparat, cross-origin media, Picture-in-Picture, multiple windows/tabs and browser crash/restart/sleep scenarios. Refine clock changes and timezone behavior.
+3. Add end-to-end coverage for quota expiry, idle cutoff, first-use reset, mandatory checklist and global breaks; expand accessibility, language and keyboard testing.
+4. Validate Firefox on macOS and Linux and record measured CPU/memory/package metrics. Confirm performance for large rule/report sets.
+5. Design PIN recovery and explicit pause policies for parent/child setups. Provide a separate, transparent administrative Firefox-policy guide; do not promise removal prevention for ordinary installs.
+6. Finish translation review and localized errors/reminder text. Improve onboarding, report refresh and explicit profile-copy confirmation.
+7. Resolve upstream development-tool audit findings, publish reproducible source/build artifacts, complete Mozilla review/signing and ship a permanently installable version.
+
+## Later
+
+- Chromium manifest and background adapters, with parity tests.
+- Optional secure settings import/export, richer report grouping, pause-time daily budgets and accessible charts.
+- Additional family/account features only after a separate privacy/permission design; no cloud history upload by default.
+
+The exact name is **TimeHarbor**. The initial misspelling was corrected through a repository rename without rewriting Git history.

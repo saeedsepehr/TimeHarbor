@@ -1,5 +1,7 @@
 # Firefox extension development
 
+Product and repository name: **TimeHarbor**. Runtime source is in `src/`, static extension assets in `public/`, tests in `tests/`. Use `npm run typecheck`, `npm test`, `npm run build`, `npm run lint:extension`, `npm run format:check` and the isolated `npm run test:firefox` as appropriate. The current browser target is Firefox desktop 142+. The alpha is unsigned; do not describe it as a permanently installable or store-published release.
+
 ## Scope and product
 
 Build a lightweight, privacy-first Firefox desktop WebExtension for Windows, macOS, and Linux. Chromium support comes later through a shared core and browser adapters. No extension source or dependency stack existed when ECC was integrated. Do not introduce a framework, migrate code, or initialize/publish a repository merely to run ECC checks.
