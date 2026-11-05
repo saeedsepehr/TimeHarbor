@@ -83,6 +83,7 @@ const server = createServer(async (req, res) => {
       if (
         ![
           "/ui/options.html",
+          "/ui/popup.html",
           "/ui/blocked.html",
           "/content.js",
           "/ui/app.js",

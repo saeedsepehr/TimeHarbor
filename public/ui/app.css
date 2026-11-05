@@ -190,6 +190,8 @@ h2 {
 input:not([type="checkbox"]),
 select,
 textarea {
+  min-width: 0;
+  max-width: 100%;
   padding: 11px 13px;
   border: 1px solid #dce0f0;
   background: #fbfbff;
@@ -523,30 +525,33 @@ td {
   font: 600 11px system-ui;
   cursor: help;
 }
-.tooltip {
+.sr-only {
   position: absolute;
-  bottom: calc(100% + 10px);
-  inset-inline-start: -12px;
-  width: 280px;
-  max-width: calc(100vw - 45px);
-  padding: 12px 15px;
-  background: #2d2d50;
-  color: #fff;
-  font-size: 12px;
-  line-height: 1.8;
-  border-radius: 11px;
-  box-shadow: 0 6px 24px #22254425;
-  z-index: 100;
-  opacity: 0;
-  visibility: hidden;
-  pointer-events: none;
-  transition: opacity 0.15s;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
 }
-.info-tip:not(.dismissed):hover .tooltip,
-.info-tip:not(.dismissed):focus-within .tooltip,
-.info-tip.touch-open .tooltip {
-  opacity: 1;
-  visibility: visible;
+.author-note {
+  font-size: 16px;
+  line-height: 2.1;
+  max-width: 75ch;
+}
+.social-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 25px;
+}
+.social-links a {
+  text-decoration: none;
+}
+.transfer-card {
+  margin-top: 24px;
 }
 .toggle-field {
   display: flex;
@@ -869,9 +874,6 @@ td {
   }
   .dialog-body {
     padding: 20px;
-  }
-  .tooltip {
-    width: 240px;
   }
   .inline-editor {
     padding: 18px;

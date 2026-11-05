@@ -1,10 +1,10 @@
 # Firefox extension development
 
-Product and repository name: **TimeHarbor**. Runtime source is in `src/`, static extension assets in `public/`, tests in `tests/`. Use `npm run typecheck`, `npm test`, `npm run build`, `npm run lint:extension`, `npm run format:check` and the isolated `npm run test:firefox` as appropriate. The current browser target is Firefox desktop 142+. The alpha is unsigned; do not describe it as a permanently installable or store-published release.
+Product and repository name: **TimeHarbor**. Runtime source is in `src/`, static extension assets in `public/`, tests in `tests/`. Use `npm run typecheck`, `npm test`, `npm run build`, `npm run build:chromium`, `npm run lint:extension`, `npm run format:check` and the isolated `npm run test:firefox`, `npm run test:chromium`, `npm run test:edge` as appropriate. Browser targets are Firefox desktop 142+ and Chromium 120+. The alpha is unsigned; do not describe it as a permanently installable Firefox or store-published release.
 
 ## Scope and product
 
-Build a lightweight, privacy-first Firefox desktop WebExtension for Windows, macOS, and Linux. Chromium support comes later through a shared core and browser adapters. No extension source or dependency stack existed when ECC was integrated. Do not introduce a framework, migrate code, or initialize/publish a repository merely to run ECC checks.
+Build a lightweight, privacy-first desktop WebExtension for Windows, macOS, and Linux. Chromium now uses a separate MV3 build with a service worker and declarative network rules; Firefox retains its event page and blocking webRequest adapter. Preserve both targets and the shared core. No extension source or dependency stack existed when ECC was integrated. Do not introduce a framework, migrate code, or initialize/publish a repository merely to run ECC checks.
 
 Confirmed behavior: quota windows start at first use; background media counts by default with per-site control; breaks affect the current site by default with profile-level scope; personal-use defaults with simple parent/child setup; reporting scope chosen during onboarding, 90-day default retention and CSV export. Product naming is deferred. Intended GitHub owner: saeedsepehr; browser sign-in alone does not prove connector identity or write permission.
 

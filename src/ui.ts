@@ -10,6 +10,12 @@ import type {
 import { duration, languageNames, t } from "./i18n.ts";
 import { ux } from "./ux-copy.ts";
 import type { UxKey } from "./ux-copy.ts";
+import { blockedTarget } from "./network-policy.ts";
+import {
+  exportSettings,
+  importSettings,
+  MAX_SETTINGS_BYTES,
+} from "./transfer.ts";
 import {
   copyTargets,
   detachSites,
@@ -35,7 +41,7 @@ let lang: Language = "en",
   token = sessionStorage.getItem("token") ?? "",
   config: Config,
   state: State;
-let section: "sites" | "profiles" | "reports" | "settings" = "sites";
+let section: "sites" | "profiles" | "reports" | "settings" | "about" = "sites";
 let currentUrl = "",
   editingRule: string | null = null;
 const openProfiles = new Set<string>();
@@ -165,27 +171,17 @@ function infoTip(label: string, text: string): HTMLElement {
     info = button(
       "i",
       () => {
-        wrapper.classList.toggle("touch-open");
+        const { body } = modal(u("help") + ": " + label);
+        body.append(el("p", "", text));
       },
       "info-button",
     ),
-    tip = el("span", "tooltip", text);
+    tip = el("span", "sr-only", text);
   tip.id = id;
-  tip.setAttribute("role", "tooltip");
+  tip.dataset.helpText = "true";
+  info.title = text;
   info.setAttribute("aria-label", u("help") + ": " + label);
   info.setAttribute("aria-describedby", id);
-  info.addEventListener("keydown", (event) => {
-    if (event.key === "Escape") {
-      wrapper.classList.remove("touch-open");
-      wrapper.classList.add("dismissed");
-    }
-  });
-  for (const event of ["focus", "mouseenter"])
-    info.addEventListener(event, () => wrapper.classList.remove("dismissed"));
-  info.addEventListener("blur", () => wrapper.classList.remove("touch-open"));
-  wrapper.addEventListener("mouseleave", () =>
-    wrapper.classList.remove("touch-open"),
-  );
   wrapper.append(info, tip);
   return wrapper;
 }
@@ -204,7 +200,7 @@ function field(
     const tip = infoTip(label, help);
     control.setAttribute(
       "aria-describedby",
-      tip.querySelector("[role=tooltip]")!.id,
+      tip.querySelector("[data-help-text]")!.id,
     );
     row.append(tip);
   }
@@ -226,7 +222,7 @@ function toggle(
     const tip = infoTip(label, help);
     control.setAttribute(
       "aria-describedby",
-      tip.querySelector("[role=tooltip]")!.id,
+      tip.querySelector("[data-help-text]")!.id,
     );
     node.append(tip);
   }
@@ -321,9 +317,15 @@ function renderOptions(): void {
   sidebar.append(brand(), el("p", "tagline", tr("intro")));
   const nav = el("nav");
   nav.setAttribute("aria-label", tr("settings"));
-  for (const key of ["sites", "profiles", "reports", "settings"] as const) {
+  for (const key of [
+    "sites",
+    "profiles",
+    "reports",
+    "settings",
+    "about",
+  ] as const) {
     const b = button(
-      tr(key),
+      key === "about" ? u("about") : tr(key),
       () => {
         run(async () => {
           section = key;
@@ -350,7 +352,9 @@ function renderOptions(): void {
     ),
   );
   const main = el("main", "main");
-  main.append(heading(tr(section), tr("intro")));
+  main.append(
+    heading(section === "about" ? u("about") : tr(section), tr("intro")),
+  );
   const guide = el("section", "page-guide"),
     guideKey: UxKey =
       section === "sites"
@@ -359,7 +363,9 @@ function renderOptions(): void {
           ? "profilesGuide"
           : section === "reports"
             ? "reportsGuide"
-            : "settingsGuide";
+            : section === "about"
+              ? "aboutGuide"
+              : "settingsGuide";
   guide.append(el("strong", "", u("how")), el("p", "", u(guideKey)));
   main.append(guide);
   const today = Object.values(state.days[dayKey(Date.now())] ?? {}).reduce(
@@ -383,7 +389,8 @@ function renderOptions(): void {
   if (section === "sites") sitesView(main);
   else if (section === "profiles") profilesView(main);
   else if (section === "reports") reportsView(main);
-  else settingsView(main);
+  else if (section === "settings") settingsView(main);
+  else aboutView(main);
   shell.append(sidebar, main);
   app.append(shell);
   window.scrollTo(0, scrollTop);
@@ -1198,6 +1205,104 @@ function settingsView(main: HTMLElement): void {
   });
   box.append(f);
   main.append(box);
+  const transfer = card();
+  transfer.classList.add("transfer-card");
+  transfer.append(
+    el("h2", "", u("transfer")),
+    el("p", "muted", u("transferHelp")),
+  );
+  const actionsTransfer = el("div", "actions"),
+    file = input("", "file");
+  file.accept = ".json,application/json";
+  file.hidden = true;
+  file.addEventListener("change", () =>
+    run(async () => {
+      const chosen = file.files?.[0];
+      file.value = "";
+      if (!chosen) return;
+      if (chosen.size > MAX_SETTINGS_BYTES)
+        throw Error("Settings file is too large (maximum 1 MiB)");
+      const incoming = importSettings(await chosen.text());
+      const summary = el(
+        "div",
+        "policy-summary",
+        `${tr("sites")}: ${incoming.rules.length} · ${tr("profiles")}: ${incoming.profiles.length}`,
+      );
+      confirmChange(
+        u("importReview"),
+        u("importWarning"),
+        async () => {
+          const result = await request<{ token: string }>("importSettings", {
+            config: incoming,
+          });
+          token = result.token;
+          sessionStorage.setItem("token", token);
+          await load();
+          announce(u("importDone"));
+        },
+        summary,
+      );
+    }),
+  );
+  actionsTransfer.append(
+    button(u("exportSettings"), () =>
+      run(async () => {
+        // Refresh authorization and settings before writing the file.
+        const latest = await request<{ config: Config }>("read");
+        const blob = URL.createObjectURL(
+          new Blob([exportSettings(latest.config)], {
+            type: "application/json",
+          }),
+        );
+        const a = el("a");
+        a.href = blob;
+        a.download = `timeharbor-settings-${dayKey(Date.now())}.json`;
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(blob), 1000);
+      }),
+    ),
+    button(u("importSettings"), () => file.click()),
+    file,
+  );
+  transfer.append(actionsTransfer);
+  main.append(transfer);
+}
+function aboutView(main: HTMLElement): void {
+  const box = card();
+  box.classList.add("about-card");
+  box.append(
+    el("h2", "", "Saeed Sepehr · سعید سپهر"),
+    el("p", "author-note", u("authorNote")),
+    el("h3", "", u("contact")),
+  );
+  const links = el("div", "social-links");
+  for (const [label, url] of [
+    ["GitHub · saeedsepehr", "https://github.com/saeedsepehr"],
+    ["Instagram · BedeBestun", "https://instagram.com/bedebestun"],
+    ["LinkedIn · Saeed Sepehr", "https://www.linkedin.com/in/saeedsepehr"],
+    ["Telegram · saeedsepehr", "https://t.me/saeedsepehr"],
+    ["X / Twitter · bedebestun", "https://x.com/bedebestun"],
+    ["Virgool · seeed-sepehr", "https://virgool.io/@seeed-sepehr"],
+    [u("bugReport"), "https://github.com/saeedsepehr/TimeHarbor/issues"],
+  ]) {
+    const a = el("a", "button", label);
+    a.href = url!;
+    a.target = "_blank";
+    a.rel = "noopener noreferrer";
+    links.append(a);
+  }
+  box.append(
+    links,
+    el(
+      "p",
+      "muted",
+      "TimeHarbor · MIT · " + browser.runtime.getManifest().version,
+    ),
+  );
+  main.append(box);
+  const toolbar = card();
+  toolbar.append(el("p", "", u("toolbarHelp")));
+  main.append(toolbar);
 }
 function throwError(text: string): void {
   announce(text, true);
@@ -1379,10 +1484,29 @@ async function renderPublic(): Promise<void> {
       remaining.id = "public-remaining";
       summary.append(remaining);
     }
+    if (reason === "break") {
+      summary.append(
+        el("p", "", tr("break")),
+        button(
+          u("openBreak"),
+          () => {
+            void browser.tabs.create({
+              url:
+                browser.runtime.getURL("ui/blocked.html") +
+                "?url=" +
+                encodeURIComponent(currentUrl),
+            });
+          },
+          "button primary wide",
+        ),
+      );
+    }
     main.append(summary);
     if (
       reason === "quota" ||
-      (data.pauseUntil > Date.now() && reason !== "break")
+      (data.pauseUntil > Date.now() &&
+        reason !== "break" &&
+        reason !== "manual")
     )
       main.append(pauseForm(data));
     main.append(
@@ -1392,6 +1516,17 @@ async function renderPublic(): Promise<void> {
           void browser.runtime.openOptionsPage();
         },
         "button wide",
+      ),
+    );
+    main.append(
+      button(
+        u("about"),
+        () => {
+          void browser.tabs.create({
+            url: browser.runtime.getURL("ui/options.html") + "#about",
+          });
+        },
+        "button subtle wide",
       ),
     );
   } else {
@@ -1504,6 +1639,7 @@ async function renderPublic(): Promise<void> {
 
 async function start(): Promise<void> {
   if (page === "options") {
+    if (location.hash === "#about") section = "about";
     const data = await request<PublicData>("public");
     setLanguage(data.language);
     try {
@@ -1520,8 +1656,8 @@ async function start(): Promise<void> {
       });
       currentUrl = tabs[0]?.url ?? "";
       if (currentUrl.startsWith(browser.runtime.getURL("ui/blocked.html")))
-        currentUrl = new URL(currentUrl).searchParams.get("url") ?? "";
-    } else currentUrl = new URL(location.href).searchParams.get("url") ?? "";
+        currentUrl = blockedTarget(currentUrl);
+    } else currentUrl = blockedTarget(location.href);
     try {
       const url = new URL(currentUrl);
       if (

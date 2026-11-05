@@ -18,6 +18,10 @@ import type { Config, State } from "./core.ts";
 import { createPin, trustedPage, verifyPin } from "./auth.ts";
 import type { PinRecord } from "./auth.ts";
 import { reconcileProfileState } from "./ux-policy.ts";
+import { prepareImport } from "./transfer.ts";
+import { networkRules } from "./network-policy.ts";
+import type { NetworkRule } from "./network-policy.ts";
+import { chromium } from "./platform.ts";
 
 interface Sample {
   url: string;
@@ -40,6 +44,28 @@ let sessions: Sessions = {},
 const activeTabs = new Map<number, number>(),
   samples = new Map<number, Sample>();
 const reminders = new Map<number, number>();
+interface DeclarativeAPI {
+  getDynamicRules(): Promise<NetworkRule[]>;
+  updateDynamicRules(change: {
+    removeRuleIds: number[];
+    addRules: NetworkRule[];
+  }): Promise<void>;
+}
+const dnr = (browser as unknown as { declarativeNetRequest: DeclarativeAPI })
+  .declarativeNetRequest;
+let lastNetworkPolicy = "";
+async function syncNetwork(now: number): Promise<void> {
+  if (!chromium) return;
+  const rules = networkRules(config, state, now, browser.runtime.getURL("/"));
+  const signature = JSON.stringify(rules);
+  if (signature === lastNetworkPolicy) return;
+  const current = await dnr.getDynamicRules();
+  await dnr.updateDynamicRules({
+    removeRuleIds: current.map((r) => r.id),
+    addRules: rules,
+  });
+  lastNetworkPolicy = signature;
+}
 const ready = (async () => {
   const data = await browser.storage.local.get(["config", "state", "pin"]);
   if (data.config) config = validateConfig(data.config);
@@ -47,12 +73,31 @@ const ready = (async () => {
   if (data.pin) pin = data.pin as PinRecord;
   const stored = await browser.storage.session.get("sessions");
   sessions = (stored.sessions ?? {}) as Sessions;
+  if (chromium) {
+    const runtime = await browser.storage.session.get("observations");
+    const observations = runtime.observations as
+      | {
+          samples?: [number, Sample][];
+          reminders?: [number, number][];
+          lastAdvance?: number;
+        }
+      | undefined;
+    if (observations) {
+      for (const [id, sample] of observations.samples ?? [])
+        samples.set(id, sample);
+      for (const [id, time] of observations.reminders ?? [])
+        reminders.set(id, time);
+      if (typeof observations.lastAdvance === "number")
+        lastAdvance = observations.lastAdvance;
+    }
+  }
   const windows = await browser.windows.getAll();
   focusedWindow = windows.find((w) => w.focused)?.id ?? -1;
   for (const tab of await browser.tabs.query({ active: true }))
     if (tab.id && typeof tab.windowId === "number")
       activeTabs.set(tab.windowId, tab.id);
   prune(config, state, Date.now());
+  await syncNetwork(Date.now());
 })();
 let queue: Promise<unknown> = Promise.resolve();
 function serial<T>(fn: () => Promise<T>): Promise<T> {
@@ -65,9 +110,18 @@ function serial<T>(fn: () => Promise<T>): Promise<T> {
 }
 async function save(force = false): Promise<void> {
   const now = Date.now();
+  await syncNetwork(now);
   if (force || now - lastSave >= 10_000) {
     prune(config, state, now);
     await browser.storage.local.set({ config, state, pin });
+    if (chromium)
+      await browser.storage.session.set({
+        observations: {
+          samples: [...samples],
+          reminders: [...reminders],
+          lastAdvance,
+        },
+      });
     lastSave = now;
   }
 }
@@ -271,9 +325,12 @@ async function message(
   }
   requireSession(msg.token, now);
   if (msg.type === "read") return { config, state, pinSet: !!pin };
-  if (msg.type === "save") {
-    const next = validateConfig(msg.config);
-    if (msg.newPin !== undefined && msg.newPin !== "") {
+  if (msg.type === "save" || msg.type === "importSettings") {
+    const next =
+      msg.type === "importSettings"
+        ? prepareImport(config, validateConfig(msg.config))
+        : validateConfig(msg.config);
+    if (msg.type === "save" && msg.newPin !== undefined && msg.newPin !== "") {
       pin = await createPin(msg.newPin);
       sessions = {};
       await browser.storage.session.set({ sessions });
@@ -299,28 +356,31 @@ async function message(
   }
   throw Error("Unknown request");
 }
-browser.runtime.onMessage.addListener((msg, sender) =>
-  serial(() => message(msg, sender))
+browser.runtime.onMessage.addListener((msg, sender, respond) => {
+  void serial(() => message(msg, sender))
     .then((data) => ({ ok: true, data }))
     .catch((error: unknown) => ({
       ok: false,
       error: error instanceof Error ? error.message : "Request failed",
-    })),
-);
-browser.webRequest.onBeforeRequest.addListener(
-  (details) =>
-    serial(async () => {
-      const host = urlHost(details.url);
-      if (!host) return {};
-      const now = Date.now();
-      advance(now);
-      const v = evaluate(config, state, host, now);
-      await save();
-      return v.blocked ? { redirectUrl: blockedUrl(details.url) } : {};
-    }),
-  { urls: ["http://*/*", "https://*/*"], types: ["main_frame"] },
-  ["blocking"],
-);
+    }))
+    .then(respond);
+  return true;
+});
+if (!chromium)
+  browser.webRequest.onBeforeRequest.addListener(
+    (details) =>
+      serial(async () => {
+        const host = urlHost(details.url);
+        if (!host) return {};
+        const now = Date.now();
+        advance(now);
+        const v = evaluate(config, state, host, now);
+        await save();
+        return v.blocked ? { redirectUrl: blockedUrl(details.url) } : {};
+      }),
+    { urls: ["http://*/*", "https://*/*"], types: ["main_frame"] },
+    ["blocking"],
+  );
 browser.tabs.onActivated.addListener((info) => {
   void serial(async () => {
     advance(Date.now());
@@ -356,6 +416,13 @@ browser.alarms.onAlarm.addListener(() => {
     const now = Date.now();
     advance(now);
     await enforce(now);
+    await save(true);
+  });
+});
+browser.runtime.onStartup.addListener(() => {
+  void serial(async () => {
+    await browser.alarms.create("checkpoint", { periodInMinutes: 0.5 });
+    await enforce(Date.now());
     await save(true);
   });
 });

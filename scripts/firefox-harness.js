@@ -74,6 +74,49 @@ void (async () => {
     assert(result.ok, "Correct PIN rejected");
     const token = result.data.token;
     checks.push("wrong PIN rejected and correct PIN accepted");
+    result = await call("importSettings", { config });
+    assert(
+      !result.ok && result.error === "AUTH_REQUIRED",
+      "Import without session must be rejected",
+    );
+    const imported = structuredClone(config);
+    imported.rules[0].id = "foreign-rule-id";
+    const fileInput = document.querySelector(".transfer-card input[type=file]");
+    const transfer = new DataTransfer();
+    transfer.items.add(
+      new File(
+        [
+          JSON.stringify({
+            format: "timeharbor-settings",
+            version: 1,
+            config: imported,
+          }),
+        ],
+        "settings.json",
+        { type: "application/json" },
+      ),
+    );
+    fileInput.files = transfer.files;
+    fileInput.dispatchEvent(new Event("change", { bubbles: true }));
+    await wait(() => document.querySelector("dialog[open] .actions .primary"));
+    document.querySelector("dialog[open] .actions .primary").click();
+    await wait(() => !document.querySelector("dialog[open]"));
+    result = await call("unlock", { pin: "1234" });
+    assert(result.ok, "Import must preserve local PIN");
+    result = await call("read", { token });
+    assert(
+      result.data.config.rules[0].id === config.rules[0].id,
+      "Import must retain destination identity",
+    );
+    assert(
+      result.data.state.sites[config.rules[0].id].usedMs >= 5000,
+      "Import must retain quota usage",
+    );
+    checks.push(
+      "authorized settings import preserves PIN and quota; missing-session import rejected",
+    );
+    if (browser.runtime.getURL("").startsWith("chrome-extension:"))
+      document.querySelector(".transfer-card button").click();
     result = await call("pause", {
       pin: "1234",
       minutes: 5,
@@ -108,6 +151,15 @@ void (async () => {
       return current.url?.includes("/ui/blocked.html");
     });
     checks.push("network-level manual blocking redirects navigation");
+    document.querySelector("nav button:nth-child(5)").click();
+    await wait(() => document.querySelector(".social-links"));
+    assert(
+      document.querySelectorAll(".social-links a").length === 7,
+      "About contact links missing",
+    );
+    checks.push(
+      "author note and all seven contact/project links are available",
+    );
     await report({ status: "PASS", checks });
   } catch (error) {
     await report({ status: "FAIL", checks, error: String(error) });

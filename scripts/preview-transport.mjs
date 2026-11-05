@@ -9,11 +9,12 @@ function previewRuntime(seed) {
   window.__timeHarborPreview = () => structuredClone({ config, state, checks });
   window.browser = {
     runtime: {
+      getManifest: () => ({ version: "0.3.0" }),
       getURL: (p) => "moz-extension://preview/" + p,
       openOptionsPage: async () => {},
       sendMessage: async (message) => {
         if (message.type === "read") return response({ config, state });
-        if (message.type === "save") {
+        if (message.type === "save" || message.type === "importSettings") {
           config = structuredClone(message.config);
           return response({ token: "demo" });
         }

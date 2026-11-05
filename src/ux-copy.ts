@@ -1,5 +1,34 @@
 import type { Language } from "./core.ts";
 const copy = {
+  about: ["About TimeHarbor", "درباره تایم‌هاربر"],
+  aboutGuide: [
+    "Meet the person behind TimeHarbor, find help, or share an idea.",
+    "با سازنده آشنا شوید، راه‌های ارتباط را ببینید و پیشنهاد یا مشکل را مطرح کنید.",
+  ],
+  authorNote: [
+    "Hi, I’m Saeed Sepehr. I built TimeHarbor hoping it can make our time online a little more intentional, help children build healthy habits, and support anyone who finds it hard to notice time passing. This is a small, open-source contribution, made with care. If it helps you, I’m glad. If you spot a bug or have an idea, I’d love to hear from you. Let’s make it better together.",
+    "سلام، من سعید سپهرم. تایم‌هاربر را با این امید ساختم که کمی آگاهانه‌تر از زمانمان در اینترنت استفاده کنیم؛ بچه‌ها عادت‌های سالم‌تری بسازند و کسانی که متوجه گذر زمان نمی‌شوند، همراه کوچکی داشته باشند. این یک سهم کوچک و متن‌باز است، با نیت کمک. اگر به کارتان آمد خوشحال می‌شوم؛ اگر باگی دیدید یا پیشنهادی داشتید، با من در تماس باشید. با کمک هم بهترش می‌کنیم.",
+  ],
+  contact: ["Stay in touch", "در تماس باشیم"],
+  bugReport: ["Report a bug or suggest an idea", "گزارش باگ یا پیشنهاد"],
+  toolbarHelp: [
+    "Can’t see the toolbar icon? Open your browser’s Extensions (puzzle) menu and pin TimeHarbor. Its menu shows this website’s usage, settings and quota-pause controls when available.",
+    "آیکن را نمی‌بینید؟ منوی افزونه‌ها با علامت پازل مرورگر را باز کنید و TimeHarbor را به نوار ابزار سنجاق کنید. منوی آن مصرف سایت، تنظیمات و کنترل وقفه سهمیه را در زمان مجاز نشان می‌دهد.",
+  ],
+  openBreak: ["Open break checklist", "باز کردن چک‌لیست استراحت"],
+  transfer: ["Move settings between browsers", "انتقال تنظیمات بین مرورگرها"],
+  transferHelp: [
+    "Export a settings file here and import it in another browser with TimeHarbor. It includes website rules and profiles, but no PIN, sessions or usage history. Your PIN on this browser stays unchanged. This is a manual transfer, not automatic cross-browser sync.",
+    "از تنظیمات فایل بگیرید و در مرورگر دیگری که تایم‌هاربر دارد وارد کنید. قوانین سایت و پروفایل‌ها منتقل می‌شوند؛ پین، نشست ورود و سابقه مصرف منتقل نمی‌شوند. پین این مرورگر تغییر نمی‌کند. این انتقال دستی است، نه همگام‌سازی خودکار بین مرورگرها.",
+  ],
+  exportSettings: ["Export settings", "خروجی تنظیمات"],
+  importSettings: ["Import settings…", "ورود تنظیمات…"],
+  importReview: ["Review settings import", "بررسی ورود تنظیمات"],
+  importWarning: [
+    "This replaces website rules, profiles and general preferences. Usage for matching websites is kept; your local PIN and reports stay on this browser. Keep a backup of your current settings before continuing. For a new installation, set a PIN separately if needed.",
+    "این کار قوانین سایت، پروفایل‌ها و ترجیحات عمومی را جایگزین می‌کند. مصرف سایت‌های مشترک حفظ می‌شود؛ پین محلی و گزارش‌های این مرورگر باقی می‌مانند. پیش از ادامه از تنظیمات فعلی خروجی بگیرید. برای نصب تازه، پین را در صورت نیاز جدا تعریف کنید.",
+  ],
+  importDone: ["Settings imported", "تنظیمات وارد شدند"],
   help: ["Help", "راهنما"],
   how: ["How this page works", "راهنمای این صفحه"],
   sitesGuide: [

@@ -2,6 +2,7 @@
 work/
 node_modules/
 dist/
+dist-chromium/
 coverage/
 web-ext-artifacts/
 outputs/

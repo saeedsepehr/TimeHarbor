@@ -18,6 +18,14 @@
 - Animated dismissible usage reminders, compact PIN controls and an indigo visual refresh.
 - Conservative migration of existing profiles without resetting their quota usage.
 
+## 0.3 alpha — implemented
+
+- Firefox and Chromium MV3 builds with shared TypeScript core/UI.
+- Chromium service worker and declarative network rules; session checkpoints for observation recovery.
+- Reviewed JSON settings export/import, excluding PINs, sessions and browsing reports.
+- Native hover help with an accessible click-to-read dialog, toolbar menu shortcuts and PNG toolbar icons.
+- About page with Saeed Sepehr's note and the supplied contact links.
+
 ## Before a public stable release
 
 1. Add a reviewed, licensed adult-domain list provider with bounded parsing, cached last-known-good data, update status and PIN-protected exceptions. Do not download executable logic or send browsing domains to a classification service.
@@ -30,8 +38,8 @@
 
 ## Later
 
-- Chromium manifest and background adapters, with parity tests.
-- Optional secure settings import/export, richer report grouping, pause-time daily budgets and accessible charts.
+- Automatic cross-browser sync after designing an explicit opt-in service, encryption, conflict handling and account/privacy model. Native browser sync does not bridge Firefox, Chrome and Edge accounts.
+- Richer report grouping, pause-time daily budgets and accessible charts.
 - Additional family/account features only after a separate privacy/permission design; no cloud history upload by default.
 
 The exact name is **TimeHarbor**. The initial misspelling was corrected through a repository rename without rewriting Git history.

@@ -1,21 +1,34 @@
 import { build } from "esbuild";
 import { mkdir, cp, writeFile, readFile } from "node:fs/promises";
-await mkdir("dist/ui", { recursive: true });
+import { iconPng } from "./icons.mjs";
+const chromium = process.argv.includes("--chromium");
+const outdir = chromium ? "dist-chromium" : "dist";
+await mkdir(outdir + "/ui", { recursive: true });
 await build({
   entryPoints: {
     background: "src/background.ts",
     content: "src/content.ts",
     "ui/app": "src/ui.ts",
   },
-  outdir: "dist",
+  outdir,
   bundle: true,
-  target: "firefox140",
+  target: chromium ? "chrome120" : "firefox142",
+  define: { __CHROMIUM__: JSON.stringify(chromium) },
+  banner: chromium
+    ? { js: "var browser = globalThis.browser || globalThis.chrome;" }
+    : {},
   format: "iife",
   minify: false,
   sourcemap: false,
   legalComments: "eof",
 });
-await cp("public", "dist", { recursive: true });
+await cp("public", outdir, { recursive: true });
+await mkdir(outdir + "/icons", { recursive: true });
+const icons = {};
+for (const size of [16, 32, 48, 96, 128]) {
+  icons[size] = `icons/${size}.png`;
+  await writeFile(`${outdir}/${icons[size]}`, iconPng(size));
+}
 const manifest = {
   manifest_version: 3,
   name: "TimeHarbor",
@@ -26,13 +39,20 @@ const manifest = {
     "storage",
     "tabs",
     "alarms",
-    "webRequest",
-    "webRequestBlocking",
+    ...(chromium
+      ? ["declarativeNetRequestWithHostAccess"]
+      : ["webRequest", "webRequestBlocking"]),
   ],
   host_permissions: ["http://*/*", "https://*/*"],
-  background: { scripts: ["background.js"] },
-  action: { default_popup: "ui/popup.html", default_icon: { 48: "icon.svg" } },
-  icons: { 48: "icon.svg", 96: "icon.svg" },
+  background: chromium
+    ? { service_worker: "background.js" }
+    : { scripts: ["background.js"] },
+  action: {
+    default_title: "TimeHarbor",
+    default_popup: "ui/popup.html",
+    default_icon: icons,
+  },
+  icons,
   options_ui: { page: "ui/options.html", open_in_tab: true },
   content_scripts: [
     {
@@ -41,16 +61,33 @@ const manifest = {
       run_at: "document_idle",
     },
   ],
-  browser_specific_settings: {
-    gecko: {
-      id: "timeharbor@saeedsepehr.github.io",
-      strict_min_version: "142.0",
-      data_collection_permissions: { required: ["none"] },
-    },
-  },
+  ...(chromium
+    ? {
+        minimum_chrome_version: "120",
+        web_accessible_resources: [
+          {
+            resources: ["ui/blocked.html"],
+            matches: ["http://*/*", "https://*/*"],
+          },
+        ],
+      }
+    : {
+        browser_specific_settings: {
+          gecko: {
+            id: "timeharbor@saeedsepehr.github.io",
+            strict_min_version: "142.0",
+            data_collection_permissions: { required: ["none"] },
+          },
+        },
+      }),
   content_security_policy: {
     extension_pages: "script-src 'self'; object-src 'none'; base-uri 'none'",
   },
 };
-await writeFile("dist/manifest.json", JSON.stringify(manifest, null, 2) + "\n");
-console.log("Firefox extension built in dist/");
+await writeFile(
+  outdir + "/manifest.json",
+  JSON.stringify(manifest, null, 2) + "\n",
+);
+console.log(
+  `${chromium ? "Chromium" : "Firefox"} extension built in ${outdir}/`,
+);

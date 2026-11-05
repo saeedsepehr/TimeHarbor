@@ -10,7 +10,11 @@ Reports can cover configured websites only (default) or all visited ordinary HTT
 
 The four-digit settings PIN is stored as a salted PBKDF2-SHA256 verifier, using 310,000 iterations. Plaintext PINs are not persisted or logged. Authorization sessions are kept in extension session storage and expire after ten minutes. Failed-attempt backoff persists locally. A local PIN does not protect against someone controlling the device or the extension's files/storage.
 
-The addon requests HTTP(S) host access to observe activity and block top-level navigation; `tabs` for tab/window identity and redirects; `storage` for local state; `alarms` for recovery/checkpoints; and `webRequest`/`webRequestBlocking` for Firefox navigation enforcement. Internal browser pages and restricted origins have different access rules.
+Manual settings exports contain configured domains, break profiles and general preferences. They exclude PIN verifiers, authorization sessions, usage reports and break records. Imports replace settings after validation and confirmation; the destination PIN is retained. The downloaded file is not encrypted: store/share it according to the sensitivity of your configured website list. There is no automatic cross-browser sync or sync server. In Chromium, recent tab observations are checkpointed in browser session storage for service-worker recovery and do not form a persistent URL history.
+
+The addon requests HTTP(S) host access to observe activity and block top-level navigation; `tabs` for tab/window identity and redirects; `storage` for local state; `alarms` for recovery/checkpoints; `webRequest`/`webRequestBlocking` for Firefox navigation enforcement, or `declarativeNetRequestWithHostAccess` in Chromium. Chromium exposes only the packaged lock-page document for redirects. Internal browser pages and restricted origins have different access rules.
+
+The About page contains external contact/project links. These are opened only when you choose a link, and their services' own privacy policies then apply. It does not embed remote social widgets, fonts or tracking images.
 
 The alpha does not download online blocklists yet. If that feature is added, its provider, requests, license and update behavior will be documented before release.
 

@@ -120,13 +120,18 @@ export async function uxBrowserChecks(driver, base) {
     idle,
   );
   await driver.executeScript("arguments[0].focus();", tip);
-  const help = await driver.executeScript(
-    "return {visibility:getComputedStyle(arguments[0].nextElementSibling).visibility,text:arguments[0].nextElementSibling.textContent};",
-    tip,
+  assert.ok((await tip.getAttribute("title")).includes("no mouse"));
+  await tip.click();
+  await driver.wait(until.elementLocated(By.css("dialog[open]")), 5000);
+  assert.ok(
+    (
+      await driver.findElement(By.css("dialog .dialog-body")).getText()
+    ).includes("no mouse"),
   );
-  assert.equal(help.visibility, "visible");
-  assert.ok(help.text.includes("no mouse"));
-  checks.push("keyboard-accessible field help explains idle activity");
+  await driver.findElement(By.css("dialog .icon-button")).click();
+  checks.push(
+    "native hover help and keyboard-clickable help dialog explain idle activity without a clipped tooltip",
+  );
   assert.ok(
     (
       await driver
@@ -154,6 +159,25 @@ export async function uxBrowserChecks(driver, base) {
   assert.ok((await pin.getRect()).width < 150);
   assert.equal(await pin.getCssValue("text-align"), "center");
   checks.push("PIN input is compact and centered");
+  await driver.findElement(By.css("nav button:nth-child(5)")).click();
+  await driver.wait(until.elementLocated(By.css(".social-links")), 5000);
+  assert.equal(
+    (await driver.findElements(By.css(".social-links a"))).length,
+    7,
+  );
+  assert.equal(
+    await driver
+      .findElement(By.css('a[href="https://www.linkedin.com/in/saeedsepehr"]'))
+      .getText(),
+    "LinkedIn · Saeed Sepehr",
+  );
+  await writeFile(
+    "outputs/TimeHarbor-about-en.png",
+    Buffer.from(await driver.takeScreenshot(), "base64"),
+  );
+  checks.push(
+    "About page shows author note and seven verified contact/project links",
+  );
   await open("blocked.html", "break-required");
   await driver.wait(until.elementLocated(By.id("break-countdown")), 5000);
   assert.equal(
@@ -221,6 +245,29 @@ export async function uxBrowserChecks(driver, base) {
   await open("blocked.html", "break-skip");
   await driver.wait(until.elementLocated(By.id("skip-break")), 5000);
   checks.push("skip action is visible only when explicitly enabled");
+  await open("popup.html", "quota", "fa");
+  await driver.wait(until.elementLocated(By.css(".pause-card")), 5000);
+  assert.ok(
+    (await driver.findElement(By.css(".popup")).getText()).includes("وقفه"),
+  );
+  assert.ok(
+    (await driver.findElement(By.css(".popup")).getText()).includes("درباره"),
+  );
+  await writeFile(
+    "outputs/TimeHarbor-popup-fa.png",
+    Buffer.from(await driver.takeScreenshot(), "base64"),
+  );
+  await open("popup.html", "break-required");
+  await driver.wait(until.elementLocated(By.css(".popup")), 5000);
+  assert.equal((await driver.findElements(By.css(".pause-card"))).length, 0);
+  assert.ok(
+    (await driver.findElement(By.css(".popup")).getText()).includes(
+      "Open break checklist",
+    ),
+  );
+  checks.push(
+    "toolbar popup exposes settings/About and quota pause, but uses break access instead of a pause during breaks",
+  );
   await open("blocked.html", "break-required", "fa");
   await driver.wait(until.elementLocated(By.css(".activity-reminder")), 5000);
   await writeFile(
