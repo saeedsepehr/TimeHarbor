@@ -1,6 +1,6 @@
 {
   "name": "timeharbor",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "description": "A local-first Firefox extension for mindful browsing, time limits and healthy breaks.",
@@ -17,7 +17,7 @@
     "package": "npm run build && web-ext build --source-dir dist --artifacts-dir outputs --overwrite-dest",
     "start": "npm run build && web-ext run --source-dir dist",
     "test:firefox": "node --experimental-strip-types scripts/firefox-smoke.mjs",
-    "format:check": "prettier --check src tests public scripts/build.mjs scripts/firefox-smoke.mjs scripts/firefox-harness.js"
+    "format:check": "prettier --check src tests public scripts/build.mjs scripts/firefox-smoke.mjs scripts/firefox-harness.js scripts/preview-transport.mjs scripts/ux-browser-checks.mjs"
   },
   "devDependencies": {
     "@types/firefox-webext-browser": "^143.0.1",

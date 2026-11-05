@@ -27,6 +27,7 @@ void (async () => {
     checks.push("temporary installation and dashboard startup");
     const form = document.querySelector("form");
     form.querySelector("textarea").value = "localhost";
+    form.querySelector("[name=minutes]").value = "1";
     form.requestSubmit();
     await wait(
       () =>
@@ -73,7 +74,26 @@ void (async () => {
     assert(result.ok, "Correct PIN rejected");
     const token = result.data.token;
     checks.push("wrong PIN rejected and correct PIN accepted");
-    result = await call("pause", { pin: "1234", minutes: 5 });
+    result = await call("pause", {
+      pin: "1234",
+      minutes: 5,
+      url: "__SITE_URL__",
+    });
+    assert(!result.ok, "Early quota pause should not be available");
+    await browser.tabs.update(tab.id, { active: true });
+    await new Promise((r) => setTimeout(r, 52000));
+    await browser.tabs.update(home.id, { active: true });
+    result = await call("public", { url: "__SITE_URL__" });
+    assert(
+      result.data.current?.reason === "quota",
+      "Actual quota should expire after one minute",
+    );
+    checks.push("real quota expiry and rejection of pre-quota pauses");
+    result = await call("pause", {
+      pin: "1234",
+      minutes: 5,
+      url: "__SITE_URL__",
+    });
     assert(result.ok && result.data.pauseUntil > Date.now(), "Pause failed");
     result = await call("resume");
     assert(result.ok, "Resume failed");

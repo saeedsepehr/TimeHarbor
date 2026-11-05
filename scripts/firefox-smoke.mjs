@@ -4,6 +4,8 @@ import { createServer } from "node:http";
 import { writeFile, readFile, cp, mkdir } from "node:fs/promises";
 import path from "node:path";
 import { openSync } from "node:fs";
+import { previewScript } from "./preview-transport.mjs";
+import { uxBrowserChecks } from "./ux-browser-checks.mjs";
 import { defaultConfig, freshState, dayKey } from "../src/core.ts";
 const uuid = "58c9de2a-1717-4d49-a1cf-8b3f6af45a21",
   id = "timeharbor@saeedsepehr.github.io";
@@ -59,18 +61,21 @@ const server = createServer(async (req, res) => {
       const u = new URL(req.url, "http://localhost");
       const resource = u.pathname.replace("/preview", "");
       if (resource === "/mock.js") {
-        const language = u.searchParams.get("lang") ?? "en";
         res.setHeader("Content-Type", "application/javascript");
         res.end(
-          'window.browser={runtime:{sendMessage:async m=>({ok:true,data:m.type==="public"?{language:' +
-            JSON.stringify(language) +
-            ',pinSet:false}:m.type==="read"?{config:{...' +
-            JSON.stringify(config) +
-            ",language:" +
-            JSON.stringify(language) +
-            "},state:" +
-            JSON.stringify(state) +
-            '}:{token:"demo"}}),openOptionsPage:async()=>{}}};',
+          previewScript(
+            config,
+            state,
+            u.searchParams.get("lang") ?? "en",
+            u.searchParams.get("scenario") ?? "dashboard",
+          ),
+        );
+        return;
+      }
+      if (resource === "/reminder.html") {
+        res.setHeader("Content-Type", "text/html");
+        res.end(
+          '<!doctype html><html><head><meta charset="utf-8"><script src="/preview/mock.js?lang=fa&scenario=reminder"></script><script src="/preview/content.js" defer></script></head><body style="background:#f5f6fc;font:20px system-ui;color:#262b49;margin:0;min-height:95vh;display:grid;place-items:center"><p>TimeHarbor · پیش‌نمایش یادآوری مصرف</p></body></html>',
         );
         return;
       }
@@ -78,6 +83,8 @@ const server = createServer(async (req, res) => {
       if (
         ![
           "/ui/options.html",
+          "/ui/blocked.html",
+          "/content.js",
           "/ui/app.js",
           "/ui/app.css",
           "/icon.svg",
@@ -95,7 +102,9 @@ const server = createServer(async (req, res) => {
             .replace(
               '<script src="app.js"',
               '<script src="/preview/mock.js?lang=' +
-                u.searchParams.get("lang") +
+                (u.searchParams.get("lang") ?? "en") +
+                "&scenario=" +
+                (u.searchParams.get("scenario") ?? "dashboard") +
                 '"></script><script src="app.js"',
             ),
         );
@@ -163,7 +172,7 @@ try {
     new Promise((_, reject) => {
       timer = setTimeout(
         () => reject(Error("Extension smoke timed out")),
-        60000,
+        110000,
       );
     }),
   ]);
@@ -196,6 +205,7 @@ try {
   report.checks.push(
     "English and Persian UI visual previews rendered in Firefox",
   );
+  report.checks.push(...(await uxBrowserChecks(driver, site)));
   await writeFile(
     "outputs/firefox-smoke.json",
     JSON.stringify(report, null, 2),

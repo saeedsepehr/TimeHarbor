@@ -6,6 +6,7 @@ export interface Profile {
   breakMinutes: number;
   scope: "site" | "all";
   required: boolean;
+  allowSkipBreak: boolean;
   checklist: string[];
   backgroundMedia: boolean;
   idleMinutes: number;
@@ -36,6 +37,16 @@ export interface SiteState {
   streakMs: number;
   breakUntil: number;
   awaitingChecks: boolean;
+  checks?: number[];
+}
+export interface BreakRecord {
+  host: string;
+  profileId: string;
+  startedAt: number;
+  endedAt: number;
+  checklist: string[];
+  checked: string[];
+  skipped: boolean;
 }
 export interface Usage {
   usedMs: number;
@@ -47,6 +58,7 @@ export interface State {
   pauseUntil: number;
   pauseDay: string;
   pauseCount: number;
+  breaks?: BreakRecord[];
 }
 export interface Verdict {
   blocked: boolean;
@@ -59,6 +71,9 @@ export interface Verdict {
   breakUntil: number;
   needsChecklist: boolean;
   checklist: string[];
+  checklistRequired: boolean;
+  allowSkip: boolean;
+  checks: number[];
 }
 export const PAUSE_MINUTES = [5, 15, 30, 60, 120, 180, 240] as const;
 export function defaultConfig(): Config {
@@ -78,6 +93,7 @@ export function defaultConfig(): Config {
         breakMinutes: 5,
         scope: "site",
         required: false,
+        allowSkipBreak: false,
         checklist: ["Drink water", "Take a walk", "Stretch"],
         backgroundMedia: true,
         idleMinutes: 5,
@@ -87,7 +103,14 @@ export function defaultConfig(): Config {
   };
 }
 export function freshState(): State {
-  return { sites: {}, days: {}, pauseUntil: 0, pauseDay: "", pauseCount: 0 };
+  return {
+    sites: {},
+    days: {},
+    pauseUntil: 0,
+    pauseDay: "",
+    pauseCount: 0,
+    breaks: [],
+  };
 }
 export function normalizeHost(input: string): string {
   const u = new URL(input.includes("://") ? input : `https://${input}`);
@@ -149,13 +172,6 @@ function syncWindow(r: Rule, st: SiteState, at: number): number | null {
   }
   return end;
 }
-function settleBreak(st: SiteState, p: Profile, now: number): void {
-  if (st.breakUntil > 0 && now >= st.breakUntil && !p.required) {
-    st.breakUntil = 0;
-    st.streakMs = 0;
-    st.awaitingChecks = false;
-  }
-}
 export function evaluate(
   c: Config,
   s: State,
@@ -174,6 +190,9 @@ export function evaluate(
     breakUntil: 0,
     needsChecklist: false,
     checklist: [],
+    checklistRequired: false,
+    allowSkip: false,
+    checks: [],
   };
   if (r) {
     const st = siteFor(s, r);
@@ -183,14 +202,10 @@ export function evaluate(
     if (r.mode === "block")
       return { ...result, blocked: true, reason: "manual" };
   }
-  if (s.pauseUntil > now) return result;
-  if (r && result.leftMs === 0)
-    return { ...result, blocked: true, reason: "quota" };
   for (const owner of c.rules) {
     if (owner.mode === "block") continue;
     const st = siteFor(s, owner),
       p = profileFor(c, owner);
-    settleBreak(st, p, now);
     if (st.breakUntil > 0 && (owner.id === r?.id || p.scope === "all"))
       return {
         ...result,
@@ -200,9 +215,77 @@ export function evaluate(
         breakUntil: st.breakUntil,
         needsChecklist: p.required && now >= st.breakUntil,
         checklist: p.checklist,
+        checklistRequired: p.required,
+        allowSkip: p.allowSkipBreak ?? false,
+        checks: st.checks ?? [],
       };
   }
+  if (s.pauseUntil > now) return result;
+  if (r && result.leftMs === 0)
+    return { ...result, blocked: true, reason: "quota" };
   return result;
+}
+export function updateBreakChecks(
+  c: Config,
+  s: State,
+  ruleId: string,
+  checks: unknown,
+  now: number,
+): void {
+  const r = c.rules.find((r) => r.id === ruleId);
+  if (!r) throw Error("Unknown rule");
+  const st = siteFor(s, r),
+    p = profileFor(c, r);
+  if (!st.breakUntil) throw Error("No active break");
+  if (p.required && now < st.breakUntil) throw Error("Break is not finished");
+  if (
+    !Array.isArray(checks) ||
+    checks.length > p.checklist.length ||
+    !checks.every(
+      (i) => Number.isInteger(i) && i >= 0 && i < p.checklist.length,
+    ) ||
+    new Set(checks).size !== checks.length
+  )
+    throw Error("Invalid checklist");
+  st.checks = [...checks] as number[];
+}
+function finishBreak(
+  c: Config,
+  s: State,
+  r: Rule,
+  now: number,
+  skipped: boolean,
+): void {
+  const st = siteFor(s, r),
+    p = profileFor(c, r);
+  (s.breaks ??= []).push({
+    host: r.host,
+    profileId: p.id,
+    startedAt: st.breakUntil - p.breakMinutes * 60_000,
+    endedAt: now,
+    checklist: [...p.checklist],
+    checked: (st.checks ?? [])
+      .map((i) => p.checklist[i])
+      .filter((text): text is string => text !== undefined),
+    skipped,
+  });
+  st.breakUntil = 0;
+  st.awaitingChecks = false;
+  st.streakMs = 0;
+  st.checks = [];
+}
+export function skipBreak(
+  c: Config,
+  s: State,
+  ruleId: string,
+  now: number,
+): void {
+  const r = c.rules.find((r) => r.id === ruleId);
+  if (!r) throw Error("Unknown rule");
+  if (!profileFor(c, r).allowSkipBreak)
+    throw Error("Skipping this break is not allowed");
+  if (!siteFor(s, r).breakUntil) throw Error("No active break");
+  finishBreak(c, s, r, now, true);
 }
 export function acknowledgeBreak(
   c: Config,
@@ -222,9 +305,8 @@ export function acknowledgeBreak(
     (!Array.isArray(checks) || !p.checklist.every((_, i) => checks.includes(i)))
   )
     throw Error("Complete the checklist");
-  st.breakUntil = 0;
-  st.awaitingChecks = false;
-  st.streakMs = 0;
+  updateBreakChecks(c, s, ruleId, checks, now);
+  finishBreak(c, s, r, now, false);
 }
 export function account(
   c: Config,
@@ -243,13 +325,18 @@ export function account(
     const v = evaluate(c, s, rawHost, cursor);
     if (v.blocked) return;
     let end = Math.min(to, nextMidnight(cursor));
-    if (r && !paused) {
+    if (r) {
       const st = siteFor(s, r),
         p = profileFor(c, r);
-      if (st.windowStart === null) st.windowStart = cursor;
-      const resetAt = syncWindow(r, st, cursor);
-      if (resetAt) end = Math.min(end, resetAt);
-      end = Math.min(end, cursor + Math.max(0, r.minutes * 60_000 - st.usedMs));
+      if (!paused) {
+        if (st.windowStart === null) st.windowStart = cursor;
+        const resetAt = syncWindow(r, st, cursor);
+        if (resetAt) end = Math.min(end, resetAt);
+        end = Math.min(
+          end,
+          cursor + Math.max(0, r.minutes * 60_000 - st.usedMs),
+        );
+      }
       if (p.breakEveryMinutes > 0)
         end = Math.min(
           end,
@@ -262,10 +349,10 @@ export function account(
     const usage = (day[host] ??= { usedMs: 0, pausedMs: 0 });
     usage.usedMs += ms;
     if (paused) usage.pausedMs += ms;
-    if (r && !paused) {
+    if (r) {
       const st = siteFor(s, r),
         p = profileFor(c, r);
-      st.usedMs += ms;
+      if (!paused) st.usedMs += ms;
       st.streakMs += ms;
       if (
         p.breakEveryMinutes > 0 &&
@@ -273,6 +360,7 @@ export function account(
       ) {
         st.breakUntil = end + p.breakMinutes * 60_000;
         st.awaitingChecks = p.required;
+        st.checks = [];
       }
     }
     cursor = end;
@@ -292,6 +380,14 @@ function integer(v: unknown, min: number, max: number): v is number {
   return typeof v === "number" && Number.isInteger(v) && v >= min && v <= max;
 }
 export function validateConfig(value: unknown): Config {
+  // Upgrade 0.1 profiles conservatively; never opt existing users into skipping.
+  if (record(value) && Array.isArray(value.profiles))
+    value = {
+      ...value,
+      profiles: value.profiles.map((p) =>
+        record(p) ? { ...p, allowSkipBreak: p.allowSkipBreak ?? false } : p,
+      ),
+    };
   if (
     !record(value) ||
     value.version !== 1 ||
@@ -323,6 +419,7 @@ export function validateConfig(value: unknown): Config {
       !integer(p.breakMinutes, 1, 240) ||
       !["site", "all"].includes(String(p.scope)) ||
       typeof p.required !== "boolean" ||
+      typeof p.allowSkipBreak !== "boolean" ||
       typeof p.backgroundMedia !== "boolean" ||
       !integer(p.idleMinutes, 1, 60) ||
       !integer(p.reminderMinutes, 1, 120) ||
@@ -363,6 +460,9 @@ export function prune(c: Config, s: State, now: number): void {
   cutoff.setDate(cutoff.getDate() - c.retentionDays + 1);
   const min = dayKey(cutoff.getTime());
   for (const day of Object.keys(s.days)) if (day < min) delete s.days[day];
+  s.breaks = (s.breaks ?? [])
+    .filter((b) => dayKey(b.endedAt) >= min)
+    .slice(-10000);
   for (const id of Object.keys(s.sites))
     if (!c.rules.some((r) => r.id === id)) delete s.sites[id];
 }

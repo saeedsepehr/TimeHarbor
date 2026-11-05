@@ -10,6 +10,8 @@ TimeHarbor's first browser target is Firefox desktop MV3. Runtime code is TypeSc
 - `src/content.ts`: interaction/media signals and short on-page usage reminders. It does not receive PIN verifiers or settings authorization tokens and cannot change settings.
 - `src/ui.ts`: popup, settings, profiles, reports and lock-page DOM rendering. Untrusted strings use textContent; executable code stays packaged.
 - `src/i18n.ts`: seven language dictionaries and time formatting.
+- `src/ux-copy.ts`: English/Persian explanatory copy with English fallback.
+- `src/ux-policy.ts`: copy-target comparisons, profile reassignment and state reconciliation without resetting quota usage.
 
 ## Time accounting
 
@@ -22,6 +24,10 @@ Long unobserved gaps above twenty seconds are discarded rather than charging sys
 ## Enforcement and authorization
 
 Firefox's blocking webRequest handler evaluates top-level HTTP(S) navigation. Existing tabs are redirected to a packaged lock page after an observed policy violation. Blocking has priority over ordinary pause exceptions. A global break can affect unconfigured ordinary websites, subject to Firefox's restricted-page rules.
+
+Manual blocks and active breaks take precedence over quota pauses. A new pause requires an exhausted quota and the configured PIN. Active paused usage still schedules breaks, while leaving quota usage unchanged. Optional checklist progress can be saved during a break; required confirmations are accepted only after its deadline. Both modes require Continue after the minimum duration. A distinct skip action requires the profile's explicit permission. Completion/skip records and checked labels are stored locally.
+
+The lock-page countdown derives from the absolute break deadline and updates locally once per second without rebuilding the form. Policy refreshes run every five seconds while visible. Field help supports hover, keyboard focus and Escape; native dialogs provide modal focus handling. Production scripts remain packaged under the existing CSP.
 
 Settings reads, writes and reports require an expiring session when a PIN exists. Sessions are generated after background-side PIN verification and stored in storage.session. Every privileged message checks the actual Firefox-supplied extension ID, extension UUID/host and exact UI pathname. Content-script data only reaches the activity route, which uses Firefox's sender.tab URL instead of a claimed domain.
 

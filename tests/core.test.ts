@@ -176,7 +176,7 @@ test("mandatory checklist cannot be acknowledged early or incompletely", () => {
   acknowledgeBreak(c, s, "yt", [0, 1, 2], 120_000);
   assert.equal(evaluate(c, s, "youtube.com", 120_000).blocked, false);
 });
-test("global break blocks ordinary unconfigured sites; optional breaks settle automatically", () => {
+test("global break blocks ordinary unconfigured sites until continue", () => {
   const c = defaultConfig(),
     s = freshState(),
     p = c.profiles[0]!;
@@ -196,6 +196,8 @@ test("global break blocks ordinary unconfigured sites; optional breaks settle au
   ];
   account(c, s, "youtube.com", 0, 60_000, false);
   assert.equal(evaluate(c, s, "example.com", 70_000).reason, "break");
+  assert.equal(evaluate(c, s, "example.com", 120_000).blocked, true);
+  acknowledgeBreak(c, s, "yt", [], 120_000);
   assert.equal(evaluate(c, s, "example.com", 120_000).blocked, false);
 });
 test("retention and deleted rules are pruned without removing today", () => {

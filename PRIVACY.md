@@ -4,6 +4,8 @@ TimeHarbor's production extension has no analytics, telemetry, advertising, acco
 
 It stores settings, domain-level usage durations, pause counters and break/quota state in `browser.storage.local`. It does not intentionally store browsing-page contents, titles, keystrokes, passwords or full URL histories. The currently blocked page URL is carried locally in the extension lock-page URL so the user can return to it. Content scripts observe interaction event timing and HTML media playback state, not the text being typed.
 
+Break activity records include the configured domain, profile ID, break start/end timestamps, configured checklist labels, selected labels and whether the break was skipped. They are self-reported, stay local and follow the configured retention period, with a maximum of 10,000 records. The report view displays the latest 100 matching break records; the current CSV export covers website usage. Clear reports removes both usage and break records without resetting the website quota.
+
 Reports can cover configured websites only (default) or all visited ordinary HTTP(S) domains, as selected in Settings. Retention defaults to 90 local calendar days and can be changed. Shortening retention removes older records at the next persisted checkpoint or configuration save. CSV export is explicitly initiated by the user and stays wherever they save it.
 
 The four-digit settings PIN is stored as a salted PBKDF2-SHA256 verifier, using 310,000 iterations. Plaintext PINs are not persisted or logged. Authorization sessions are kept in extension session storage and expire after ten minutes. Failed-attempt backoff persists locally. A local PIN does not protect against someone controlling the device or the extension's files/storage.

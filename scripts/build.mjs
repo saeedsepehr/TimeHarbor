@@ -1,5 +1,5 @@
 import { build } from "esbuild";
-import { mkdir, cp, writeFile } from "node:fs/promises";
+import { mkdir, cp, writeFile, readFile } from "node:fs/promises";
 await mkdir("dist/ui", { recursive: true });
 await build({
   entryPoints: {
@@ -19,7 +19,7 @@ await cp("public", "dist", { recursive: true });
 const manifest = {
   manifest_version: 3,
   name: "TimeHarbor",
-  version: "0.1.0",
+  version: JSON.parse(await readFile("package.json", "utf8")).version,
   description:
     "Mindful browsing with private time limits, healthy breaks, PIN controls and local reports.",
   permissions: [

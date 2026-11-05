@@ -1,6 +1,22 @@
 import { dayKey, normalizeHost, PAUSE_MINUTES } from "./core.ts";
-import type { Config, Language, Rule, State, Verdict } from "./core.ts";
+import type {
+  Config,
+  Language,
+  Profile,
+  Rule,
+  State,
+  Verdict,
+} from "./core.ts";
 import { duration, languageNames, t } from "./i18n.ts";
+import { ux } from "./ux-copy.ts";
+import type { UxKey } from "./ux-copy.ts";
+import {
+  copyTargets,
+  detachSites,
+  removeProfile,
+  noBreakProfile,
+  NO_BREAKS,
+} from "./ux-policy.ts";
 
 interface PublicData {
   language: Language;
@@ -21,12 +37,13 @@ let lang: Language = "en",
   state: State;
 let section: "sites" | "profiles" | "reports" | "settings" = "sites";
 let currentUrl = "",
-  editingRule: string | null = null,
-  editingProfile: string | null = null;
-const selected = new Set<string>(),
-  checks = new Set<number>();
+  editingRule: string | null = null;
+const openProfiles = new Set<string>();
+const checks = new Set<number>();
+let fieldSequence = 0;
 type Word = Parameters<typeof t>[0];
 const tr = (key: Word): string => t(key, lang);
+const u = (key: UxKey): string => ux(key, lang);
 function el<K extends keyof HTMLElementTagNameMap>(
   tag: K,
   cls = "",
@@ -98,6 +115,8 @@ function pinInput(): HTMLInputElement {
   p.minLength = 4;
   p.maxLength = 4;
   p.autocomplete = "off";
+  p.className = "pin-input";
+  p.dir = "ltr";
   return p;
 }
 function select(options: [string, string][], value: string): HTMLSelectElement {
@@ -110,19 +129,107 @@ function select(options: [string, string][], value: string): HTMLSelectElement {
   s.value = value;
   return s;
 }
-function field(label: string, control: HTMLElement): HTMLLabelElement {
-  const wrapper = el("label", "field");
-  wrapper.append(el("span", "label", label), control);
+function helpFor(label: string): string {
+  const mappings: [string, UxKey][] = [
+    [tr("idle"), "idleHelp"],
+    [tr("scope"), "scopeHelp"],
+    [tr("every"), "everyHelp"],
+    [tr("duration"), "durationHelp"],
+    [tr("required"), "requiredFieldHelp"],
+    [tr("profile"), "profileHelp"],
+    [tr("backgroundMedia"), "mediaHelp"],
+    [tr("reminder"), "reminderHelp"],
+    [tr("budget"), "budgetHelp"],
+    [tr("window"), "windowHelp"],
+    [u("resetPolicy"), "resetHelp"],
+    [tr("limit"), "modeHelp"],
+    [tr("website"), "domainHelp"],
+    [tr("checklist"), "checklistHelp"],
+    [tr("reportScope"), "reportScopeHelp"],
+    [tr("retention"), "retentionHelp"],
+    [tr("pauseMax"), "pauseMaxHelp"],
+    [tr("pauseAllowed"), "pauseHelp"],
+    [tr("newPin"), "pinHelp"],
+    [tr("pin"), "pinHelp"],
+    [tr("name"), "nameHelp"],
+    [tr("from"), "rangeHelp"],
+    [tr("to"), "rangeHelp"],
+    [tr("language"), "languageHelp"],
+  ];
+  const entry = mappings.find(([name]) => label.startsWith(name));
+  return entry ? u(entry[1]) : "";
+}
+function infoTip(label: string, text: string): HTMLElement {
+  const wrapper = el("span", "info-tip"),
+    id = "help-" + ++fieldSequence,
+    info = button(
+      "i",
+      () => {
+        wrapper.classList.toggle("touch-open");
+      },
+      "info-button",
+    ),
+    tip = el("span", "tooltip", text);
+  tip.id = id;
+  tip.setAttribute("role", "tooltip");
+  info.setAttribute("aria-label", u("help") + ": " + label);
+  info.setAttribute("aria-describedby", id);
+  info.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      wrapper.classList.remove("touch-open");
+      wrapper.classList.add("dismissed");
+    }
+  });
+  for (const event of ["focus", "mouseenter"])
+    info.addEventListener(event, () => wrapper.classList.remove("dismissed"));
+  info.addEventListener("blur", () => wrapper.classList.remove("touch-open"));
+  wrapper.addEventListener("mouseleave", () =>
+    wrapper.classList.remove("touch-open"),
+  );
+  wrapper.append(info, tip);
+  return wrapper;
+}
+function field(
+  label: string,
+  control: HTMLElement,
+  help = helpFor(label),
+): HTMLElement {
+  const wrapper = el("div", "field"),
+    row = el("div", "field-label"),
+    caption = el("label", "label", label);
+  if (!control.id) control.id = "field-" + ++fieldSequence;
+  caption.htmlFor = control.id;
+  row.append(caption);
+  if (help) {
+    const tip = infoTip(label, help);
+    control.setAttribute(
+      "aria-describedby",
+      tip.querySelector("[role=tooltip]")!.id,
+    );
+    row.append(tip);
+  }
+  wrapper.append(row, control);
   return wrapper;
 }
 function toggle(
   label: string,
   checked: boolean,
-): { node: HTMLLabelElement; control: HTMLInputElement } {
+  help = helpFor(label),
+): { node: HTMLElement; control: HTMLInputElement } {
   const control = input("", "checkbox");
   control.checked = checked;
-  const node = el("label", "toggle");
-  node.append(control, el("span", "", label));
+  const node = el("div", "toggle-field"),
+    caption = el("label", "toggle");
+  caption.append(control, el("span", "", label));
+  node.append(caption);
+  if (help) {
+    const tip = infoTip(label, help);
+    control.setAttribute(
+      "aria-describedby",
+      tip.querySelector("[role=tooltip]")!.id,
+    );
+    node.append(tip);
+  }
   return { node, control };
 }
 function brand(): HTMLElement {
@@ -151,14 +258,23 @@ function formSubmit(form: HTMLFormElement, action: () => Promise<void>): void {
     if (form.reportValidity()) run(action);
   });
 }
-async function commit(next: Config, newPin?: string): Promise<void> {
+async function commit(
+  next: Config,
+  newPin?: string,
+  rerender = true,
+): Promise<void> {
   const result = await request<{ token: string }>("save", {
     config: next,
     ...(newPin ? { newPin } : {}),
   });
   token = result.token;
   sessionStorage.setItem("token", token);
-  await load();
+  if (rerender) await load();
+  else {
+    const data = await request<{ config: Config; state: State }>("read");
+    config = data.config;
+    state = data.state;
+  }
   announce(tr("saved"));
 }
 function withChange(change: (next: Config) => void): void {
@@ -198,6 +314,7 @@ function unlockView(): void {
   p.focus();
 }
 function renderOptions(): void {
+  const scrollTop = window.scrollY;
   app.replaceChildren();
   const shell = el("div", "shell"),
     sidebar = el("aside", "sidebar");
@@ -234,6 +351,17 @@ function renderOptions(): void {
   );
   const main = el("main", "main");
   main.append(heading(tr(section), tr("intro")));
+  const guide = el("section", "page-guide"),
+    guideKey: UxKey =
+      section === "sites"
+        ? "sitesGuide"
+        : section === "profiles"
+          ? "profilesGuide"
+          : section === "reports"
+            ? "reportsGuide"
+            : "settingsGuide";
+  guide.append(el("strong", "", u("how")), el("p", "", u(guideKey)));
+  main.append(guide);
   const today = Object.values(state.days[dayKey(Date.now())] ?? {}).reduce(
     (n, v) => n + v.usedMs,
     0,
@@ -242,7 +370,10 @@ function renderOptions(): void {
   for (const [label, value] of [
     [tr("today"), duration(today, lang)],
     [tr("sites"), String(config.rules.length)],
-    [tr("profiles"), String(config.profiles.length)],
+    [
+      tr("profiles"),
+      String(config.profiles.filter((p) => p.id !== NO_BREAKS).length),
+    ],
   ]) {
     const s = el("div", "stat");
     s.append(el("span", "muted", label), el("strong", "", value));
@@ -255,208 +386,116 @@ function renderOptions(): void {
   else settingsView(main);
   shell.append(sidebar, main);
   app.append(shell);
+  window.scrollTo(0, scrollTop);
 }
-function sitesView(main: HTMLElement): void {
-  const editor = card(),
-    f = el("form", "stack"),
-    r = config.rules.find((r) => r.id === editingRule);
-  editor.append(el("h2", "", r ? tr("edit") : tr("add")));
-  const domains = el("textarea");
-  domains.rows = 2;
-  domains.placeholder = "youtube.com\naparat.com";
-  domains.required = true;
-  domains.value = r?.host ?? "";
-  domains.dir = "ltr";
-  const mode = select(
-    [
-      ["limit", tr("limit")],
-      ["block", tr("block")],
-    ],
-    r?.mode ?? "limit",
-  );
-  const minutes = numeric(r?.minutes ?? 60),
-    reset = select(
-      [
-        ["daily", tr("daily")],
-        ["period", tr("period")],
-      ],
-      r?.reset ?? "period",
-    );
-  const hours = numeric(r?.hours ?? 6, 1, 168),
-    profile = select(
-      config.profiles.map((p) => [p.id, p.name]),
-      r?.profileId ?? config.profiles[0]!.id,
-    );
-  const grid = el("div", "form-grid");
-  grid.append(
-    field(tr("limit"), mode),
-    field(tr("budget") + " · " + tr("minutes"), minutes),
-    field(tr("resetAt"), reset),
-    field(tr("window"), hours),
-    field(tr("profile"), profile),
-  );
-  f.append(field(tr("website"), domains), grid);
-  const actions = el("div", "actions"),
-    save = el("button", "button primary", r ? tr("save") : tr("add"));
-  save.type = "submit";
-  actions.append(save);
-  if (r)
-    actions.append(
-      button(
-        "×",
-        () => {
-          editingRule = null;
-          renderOptions();
-        },
-        "button subtle",
-      ),
-    );
-  f.append(actions);
-  editor.append(f);
-  main.append(editor);
-  formSubmit(f, async () => {
-    const next = structuredClone(config);
-    const hosts = domains.value
-      .split(/[\n,]+/)
-      .map((s) => s.trim())
-      .filter(Boolean)
-      .map(normalizeHost);
-    if (!hosts.length) throw Error("Enter a website");
-    if (r && hosts.length !== 1) throw Error("Edit one website at a time");
-    for (const host of hosts) {
-      if (next.rules.some((other) => other.host === host && other.id !== r?.id))
-        throw Error("Website already exists: " + host);
-      const rule: Rule = {
-        id: r?.id ?? crypto.randomUUID(),
-        host,
-        mode: mode.value as Rule["mode"],
-        minutes: Number(minutes.value),
-        reset: reset.value as Rule["reset"],
-        hours: Number(hours.value),
-        profileId: profile.value,
-      };
-      if (r)
-        next.rules = next.rules.map((old) => (old.id === r.id ? rule : old));
-      else next.rules.push(rule);
-    }
-    editingRule = null;
-    await commit(next);
+function profileName(id: string): string {
+  return id === NO_BREAKS
+    ? u("noBreaks")
+    : (config.profiles.find((p) => p.id === id)?.name ?? "");
+}
+function ruleSummary(rule: Rule): string {
+  return `${rule.mode === "block" ? tr("block") : `${rule.minutes} ${tr("minutes")} / ${rule.reset === "daily" ? tr("daily") : `${rule.hours} ${tr("hours")}`}`} · ${profileName(rule.profileId)}`;
+}
+function modal(title: string): {
+  dialog: HTMLDialogElement;
+  body: HTMLElement;
+  close: () => void;
+} {
+  const previous = document.activeElement as HTMLElement | null,
+    dialog = el("dialog", "dialog"),
+    header = el("div", "dialog-header"),
+    h = el("h2", "", title),
+    body = el("div", "dialog-body");
+  h.id = "dialog-title-" + ++fieldSequence;
+  dialog.setAttribute("aria-labelledby", h.id);
+  const close = (): void => {
+    dialog.close();
+  };
+  const closeButton = button("×", close, "button icon-button");
+  closeButton.setAttribute("aria-label", u("close"));
+  header.append(h, closeButton);
+  dialog.append(header, body);
+  dialog.addEventListener("close", () => {
+    dialog.remove();
+    if (previous?.isConnected) previous.focus({ preventScroll: true });
+    else
+      document.getElementById("copy-launcher")?.focus({ preventScroll: true });
   });
-  const list = card();
-  list.append(el("h2", "", tr("sites")));
-  if (config.rules.length) {
-    const toolbar = el("div", "actions");
-    const source = select(
-      config.rules.map((r) => [r.id, r.host]),
-      config.rules[0]!.id,
-    );
-    source.setAttribute("aria-label", tr("source"));
-    toolbar.append(
-      field(tr("source"), source),
-      button(tr("copy"), () => {
-        const template = config.rules.find((r) => r.id === source.value);
-        if (!template || !selected.size) return;
-        withChange((next) => {
-          next.rules = next.rules.map((r) =>
-            selected.has(r.id) ? { ...template, id: r.id, host: r.host } : r,
-          );
-        });
-      }),
-    );
-    list.append(toolbar);
-    const table = el("table"),
-      head = el("thead"),
-      hr = el("tr");
-    for (const label of [
-      tr("select"),
-      tr("website"),
-      tr("budget"),
-      tr("profile"),
-      tr("edit"),
-    ])
-      hr.append(el("th", "", label));
-    head.append(hr);
-    table.append(head);
-    const body = el("tbody");
-    for (const rule of config.rules) {
-      const row = el("tr"),
-        check = input("", "checkbox");
-      check.checked = selected.has(rule.id);
-      check.setAttribute("aria-label", tr("select") + " " + rule.host);
-      check.addEventListener("change", () => {
-        if (check.checked) selected.add(rule.id);
-        else selected.delete(rule.id);
-      });
-      const c = el("td");
-      c.append(check);
-      const host = el("td", "domain", rule.host),
-        budget = el(
-          "td",
-          "",
-          rule.mode === "block"
-            ? tr("block")
-            : `${rule.minutes} ${tr("minutes")} / ${rule.reset === "daily" ? tr("daily") : `${rule.hours}h`}`,
-        ),
-        p = el(
-          "td",
-          "",
-          config.profiles.find((p) => p.id === rule.profileId)?.name ?? "",
-        );
-      const a = el("td", "row-actions");
-      a.append(
-        button(
-          tr("edit"),
-          () => {
-            editingRule = rule.id;
-            renderOptions();
-          },
-          "button small",
-        ),
-        button(
-          tr("delete"),
-          () => {
-            withChange((next) => {
-              next.rules = next.rules.filter((r) => r.id !== rule.id);
-            });
-          },
-          "button small danger",
-        ),
-      );
-      row.append(c, host, budget, p, a);
-      body.append(row);
-    }
-    table.append(body);
-    const scroll = el("div", "table-scroll");
-    scroll.append(table);
-    list.append(scroll);
-  } else list.append(el("p", "empty", tr("noData")));
-  main.append(list);
+  document.body.append(dialog);
+  dialog.showModal();
+  return { dialog, body, close };
 }
-function profilesView(main: HTMLElement): void {
-  const p = config.profiles.find((p) => p.id === editingProfile),
-    box = card(),
-    f = el("form", "stack");
-  box.append(el("h2", "", tr("profile")));
-  const name = input(p?.name ?? "");
+function confirmChange(
+  title: string,
+  description: string,
+  action: () => Promise<void>,
+  extra?: HTMLElement,
+): void {
+  const { body, close } = modal(title);
+  body.append(el("p", "muted", description));
+  if (extra) body.append(extra);
+  const actions = el("div", "actions");
+  const accept = button(
+    u("confirm"),
+    () => {
+      accept.disabled = true;
+      run(async () => {
+        try {
+          await action();
+          close();
+        } finally {
+          accept.disabled = false;
+        }
+      });
+    },
+    "button primary",
+  );
+  actions.append(button(u("cancel"), close), accept);
+  body.append(actions);
+}
+function profileEditor(
+  profile?: Profile,
+  onSave?: (profile: Profile) => Promise<void>,
+): HTMLFormElement {
+  const f = el("form", "stack profile-editor");
+  f.dataset.editor = "profile";
+  const name = input(profile?.name ?? "");
+  name.name = "profileName";
   name.required = true;
   name.maxLength = 80;
-  const every = numeric(p?.breakEveryMinutes ?? 30, 0),
-    length = numeric(p?.breakMinutes ?? 5, 1, 240),
+  const every = numeric(profile?.breakEveryMinutes ?? 30, 0),
+    length = numeric(profile?.breakMinutes ?? 5, 1, 240),
     scope = select(
       [
-        ["site", tr("siteOnly")],
+        ["site", u("assignedSite")],
         ["all", tr("allSites")],
       ],
-      p?.scope ?? "site",
+      profile?.scope ?? "site",
     );
-  const idle = numeric(p?.idleMinutes ?? 5, 1, 60),
-    reminder = numeric(p?.reminderMinutes ?? 10, 1, 120),
-    required = toggle(tr("required"), p?.required ?? false),
-    background = toggle(tr("backgroundMedia"), p?.backgroundMedia ?? true);
+  every.name = "breakEveryMinutes";
+  length.name = "breakMinutes";
+  scope.name = "scope";
+  const idle = numeric(profile?.idleMinutes ?? 5, 1, 60),
+    reminder = numeric(profile?.reminderMinutes ?? 10, 1, 120),
+    required = toggle(tr("required"), profile?.required ?? false),
+    background = toggle(
+      tr("backgroundMedia"),
+      profile?.backgroundMedia ?? true,
+    ),
+    skip = toggle(
+      u("allowSkip"),
+      profile?.allowSkipBreak ?? false,
+      u("skipHelp"),
+    );
+  idle.name = "idleMinutes";
+  reminder.name = "reminderMinutes";
+  required.control.name = "required";
+  skip.control.name = "allowSkipBreak";
   const checklist = el("textarea");
   checklist.rows = 3;
+  checklist.name = "checklist";
   checklist.value = (
-    p?.checklist ?? ["Drink water", "Take a walk", "Stretch"]
+    profile?.checklist ?? ["Drink water", "Take a walk", "Stretch"]
   ).join("\n");
   const grid = el("div", "form-grid");
   grid.append(
@@ -472,21 +511,20 @@ function profilesView(main: HTMLElement): void {
     field(tr("checklist"), checklist),
     required.node,
     background.node,
+    skip.node,
   );
   const save = el("button", "button primary", tr("save"));
   save.type = "submit";
   f.append(save);
-  box.append(f);
-  main.append(box);
   formSubmit(f, async () => {
-    const next = structuredClone(config);
-    const profile = {
-      id: p?.id ?? crypto.randomUUID(),
+    const nextProfile: Profile = {
+      id: profile?.id ?? crypto.randomUUID(),
       name: name.value.trim(),
       breakEveryMinutes: Number(every.value),
       breakMinutes: Number(length.value),
       scope: scope.value as "site" | "all",
       required: required.control.checked,
+      allowSkipBreak: skip.control.checked,
       checklist: checklist.value
         .split("\n")
         .map((s) => s.trim())
@@ -495,20 +533,452 @@ function profilesView(main: HTMLElement): void {
       idleMinutes: Number(idle.value),
       reminderMinutes: Number(reminder.value),
     };
-    if (p)
-      next.profiles = next.profiles.map((old) =>
-        old.id === p.id ? profile : old,
+    if (onSave) {
+      await onSave(nextProfile);
+      return;
+    }
+    const next = structuredClone(config);
+    if (profile)
+      next.profiles = next.profiles.map((p) =>
+        p.id === profile.id ? nextProfile : p,
       );
-    else next.profiles.push(profile);
-    editingProfile = null;
+    else next.profiles.push(nextProfile);
     await commit(next);
   });
+  return f;
+}
+function createProfileDialog(onCreated: (profile: Profile) => void): void {
+  const { body, close } = modal(u("addProfile"));
+  body.append(el("p", "muted", u("profilesGuide")));
+  const form = profileEditor(undefined, async (profile) => {
+    const next = structuredClone(config);
+    next.profiles.push(profile);
+    await commit(next, undefined, false);
+    close();
+    onCreated(profile);
+  });
+  body.append(form);
+  form.querySelector<HTMLInputElement>("input")?.focus();
+}
+function ruleEditor(rule?: Rule): HTMLFormElement {
+  const f = el("form", "stack site-editor");
+  f.dataset.editor = "website";
+  const domains = el("textarea");
+  domains.rows = rule ? 1 : 2;
+  domains.name = "websites";
+  domains.placeholder = "youtube.com\naparat.com";
+  domains.required = true;
+  domains.dir = "ltr";
+  domains.value = rule?.host ?? "";
+  const mode = select(
+      [
+        ["limit", tr("limit")],
+        ["block", tr("block")],
+      ],
+      rule?.mode ?? "limit",
+    ),
+    minutes = numeric(rule?.minutes ?? 60),
+    reset = select(
+      [
+        ["daily", tr("daily")],
+        ["period", tr("period")],
+      ],
+      rule?.reset ?? "period",
+    ),
+    hours = numeric(rule?.hours ?? 6, 1, 168);
+  mode.name = "mode";
+  minutes.name = "minutes";
+  reset.name = "reset";
+  hours.name = "hours";
+  const options: [string, string][] = config.profiles.map((p) => [
+    p.id,
+    profileName(p.id),
+  ]);
+  if (!config.profiles.some((p) => p.id === NO_BREAKS))
+    options.push([NO_BREAKS, u("noBreaks")]);
+  options.push(["__new_profile__", u("newProfile")]);
+  const profile = select(options, rule?.profileId ?? config.profiles[0]!.id);
+  profile.name = "profileId";
+  let lastProfile = profile.value;
+  profile.addEventListener("change", () => {
+    if (profile.value === "__new_profile__") {
+      profile.value = lastProfile;
+      createProfileDialog((created) => {
+        const option = el("option", "", created.name);
+        option.value = created.id;
+        profile.insertBefore(option, profile.lastElementChild);
+        profile.value = created.id;
+        lastProfile = created.id;
+        profile.focus({ preventScroll: true });
+      });
+    } else lastProfile = profile.value;
+  });
+  const grid = el("div", "form-grid");
+  grid.append(
+    field(tr("limit"), mode),
+    field(tr("budget") + " · " + tr("minutes"), minutes),
+    field(u("resetPolicy"), reset),
+    field(tr("window"), hours),
+    field(tr("profile"), profile),
+  );
+  const update = (): void => {
+    const blocked = mode.value === "block";
+    minutes.disabled = blocked;
+    reset.disabled = blocked;
+    hours.disabled = blocked || reset.value === "daily";
+  };
+  mode.addEventListener("change", update);
+  reset.addEventListener("change", update);
+  update();
+  f.append(field(tr("website"), domains), grid);
+  const actions = el("div", "actions"),
+    save = el("button", "button primary", rule ? tr("save") : tr("add"));
+  save.type = "submit";
+  actions.append(save);
+  if (rule)
+    actions.append(
+      button(
+        u("cancel"),
+        () => {
+          editingRule = null;
+          renderOptions();
+        },
+        "button subtle",
+      ),
+    );
+  f.append(actions);
+  formSubmit(f, async () => {
+    const next = structuredClone(config);
+    const hosts = domains.value
+      .split(/[\n,]+/)
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .map(normalizeHost);
+    if (!hosts.length) throw Error("Enter a website");
+    if (rule && hosts.length !== 1) throw Error("Edit one website at a time");
+    if (
+      profile.value === NO_BREAKS &&
+      !next.profiles.some((p) => p.id === NO_BREAKS)
+    ) {
+      // Create the reserved no-break routine only when selected.
+      noBreakProfile(next);
+    }
+    for (const host of hosts) {
+      if (next.rules.some((r) => r.host === host && r.id !== rule?.id))
+        throw Error("Website already exists: " + host);
+      const updated: Rule = {
+        id: rule?.id ?? crypto.randomUUID(),
+        host,
+        mode: mode.value as Rule["mode"],
+        minutes:
+          mode.value === "block"
+            ? (rule?.minutes ?? 60)
+            : Number(minutes.value),
+        reset: reset.value as Rule["reset"],
+        hours: reset.value === "daily" ? 24 : Number(hours.value),
+        profileId: profile.value,
+      };
+      if (rule)
+        next.rules = next.rules.map((r) => (r.id === rule.id ? updated : r));
+      else next.rules.push(updated);
+    }
+    editingRule = null;
+    await commit(next);
+  });
+  return f;
+}
+function copyWizard(): void {
+  const { body, close } = modal(u("copyWizard"));
+  let step = 1,
+    sourceId = config.rules[0]!.id;
+  const targets = new Set<string>();
+  const draw = (): void => {
+    body.replaceChildren();
+    const progress = el("ol", "wizard-progress");
+    for (const [i, key] of [
+      "chooseSource",
+      "chooseTargets",
+      "reviewCopy",
+    ].entries()) {
+      const item = el("li", step === i + 1 ? "current" : "", u(key as UxKey));
+      if (step === i + 1) item.setAttribute("aria-current", "step");
+      progress.append(item);
+    }
+    body.append(progress);
+    const source = config.rules.find((r) => r.id === sourceId)!;
+    if (step === 1) {
+      body.append(el("p", "muted", u("sourceHelp")));
+      const picker = select(
+        config.rules.map((r) => [r.id, r.host]),
+        sourceId,
+      );
+      picker.name = "copySource";
+      picker.addEventListener("change", () => {
+        sourceId = picker.value;
+        targets.clear();
+        summary.textContent = ruleSummary(
+          config.rules.find((r) => r.id === sourceId)!,
+        );
+      });
+      const summary = el("p", "policy-summary", ruleSummary(source));
+      body.append(field(tr("source"), picker, u("sourceHelp")), summary);
+    } else if (step === 2) {
+      body.append(el("p", "muted", u("targetsHelp")));
+      const list = el("div", "copy-targets");
+      for (const target of copyTargets(config, sourceId)) {
+        const choice = toggle(target.rule.host, targets.has(target.rule.id));
+        choice.node.classList.add("target-item");
+        choice.control.name = "copyTarget";
+        choice.control.value = target.rule.id;
+        choice.control.disabled = target.identical;
+        if (target.identical) {
+          choice.node.classList.add("identical");
+          choice.node.append(el("small", "muted", u("alreadyMatches")));
+        } else
+          choice.control.addEventListener("change", () => {
+            if (choice.control.checked) targets.add(target.rule.id);
+            else targets.delete(target.rule.id);
+            next.disabled = targets.size === 0;
+            count.textContent = `${u("selectedCount")}: ${targets.size}`;
+          });
+        list.append(choice.node);
+      }
+      const count = el("p", "muted", `${u("selectedCount")}: ${targets.size}`);
+      body.append(list, count);
+    } else {
+      body.append(
+        el("p", "muted", u("reviewHelp")),
+        el("p", "policy-summary", `${source.host} → ${ruleSummary(source)}`),
+      );
+      const list = el("ul", "review-list");
+      for (const rule of config.rules.filter((r) => targets.has(r.id))) {
+        const item = el("li");
+        item.append(
+          el("strong", "domain", rule.host),
+          el("small", "muted", ruleSummary(rule)),
+          el("span", "", `→ ${ruleSummary(source)}`),
+        );
+        list.append(item);
+      }
+      body.append(list);
+    }
+    const actions = el("div", "actions wizard-actions");
+    actions.append(button(u("cancel"), close));
+    if (step > 1)
+      actions.append(
+        button(u("previous"), () => {
+          step--;
+          draw();
+        }),
+      );
+    const next = button(
+      step === 3 ? u("apply") : u("next"),
+      () => {
+        if (step < 3) {
+          step++;
+          draw();
+        } else
+          run(async () => {
+            const updated = structuredClone(config);
+            updated.rules = updated.rules.map((r) =>
+              targets.has(r.id) ? { ...source, id: r.id, host: r.host } : r,
+            );
+            await commit(updated);
+            close();
+          });
+      },
+      "button primary",
+    );
+    next.dataset.action = step === 3 ? "apply-copy" : "next-copy";
+    next.disabled = step === 2 && targets.size === 0;
+    actions.append(next);
+    body.append(actions);
+  };
+  draw();
+}
+function sitesView(main: HTMLElement): void {
+  const add = el("details", "card create-panel");
+  add.open = config.rules.length === 0;
+  const summary = el("summary", "section-summary", tr("add"));
+  add.append(summary, ruleEditor());
+  main.append(add);
+  const list = card(),
+    title = el("div", "section-header");
+  title.append(el("h2", "", tr("sites")));
+  if (config.rules.length > 1) {
+    const copy = button(u("copyWizard"), copyWizard, "button small");
+    copy.id = "copy-launcher";
+    title.append(copy);
+  }
+  list.append(title);
+  if (!config.rules.length) {
+    list.append(el("p", "empty", tr("noData")));
+    main.append(list);
+    return;
+  }
+  const table = el("table"),
+    head = el("thead"),
+    headRow = el("tr");
+  for (const label of [tr("website"), tr("budget"), tr("profile"), tr("edit")])
+    headRow.append(el("th", "", label));
+  head.append(headRow);
+  table.append(head);
+  const tbody = el("tbody");
+  for (const rule of config.rules) {
+    const row = el("tr");
+    row.dataset.ruleId = rule.id;
+    const controls = el("td", "row-actions"),
+      edit = button(
+        tr("edit"),
+        () => {
+          editingRule = editingRule === rule.id ? null : rule.id;
+          renderOptions();
+          document
+            .querySelector<HTMLElement>(
+              `[data-editor-for="${rule.id}"] textarea`,
+            )
+            ?.focus({ preventScroll: true });
+        },
+        "button small",
+      );
+    edit.setAttribute("aria-expanded", String(editingRule === rule.id));
+    edit.setAttribute("aria-controls", "editor-" + rule.id);
+    controls.append(
+      edit,
+      button(
+        tr("delete"),
+        () =>
+          confirmChange(tr("delete"), rule.host, async () => {
+            const next = structuredClone(config);
+            next.rules = next.rules.filter((r) => r.id !== rule.id);
+            await commit(next);
+          }),
+        "button small danger",
+      ),
+    );
+    row.append(
+      el("td", "domain", rule.host),
+      el(
+        "td",
+        "",
+        rule.mode === "block"
+          ? tr("block")
+          : `${rule.minutes} ${tr("minutes")} / ${rule.reset === "daily" ? tr("daily") : `${rule.hours} ${tr("hours")}`}`,
+      ),
+      el("td", "", profileName(rule.profileId)),
+      controls,
+    );
+    tbody.append(row);
+    if (editingRule === rule.id) {
+      const editorRow = el("tr", "inline-editor-row"),
+        cell = el("td");
+      cell.colSpan = 4;
+      const panel = el("section", "inline-editor");
+      panel.id = "editor-" + rule.id;
+      panel.dataset.editorFor = rule.id;
+      panel.append(el("h3", "domain", rule.host), ruleEditor(rule));
+      cell.append(panel);
+      editorRow.append(cell);
+      tbody.append(editorRow);
+    }
+  }
+  table.append(tbody);
+  const scroll = el("div", "table-scroll");
+  scroll.append(table);
+  list.append(scroll);
+  main.append(list);
+}
+function connectedSites(profile: Profile): HTMLElement {
+  const wrapper = el("section", "connected-sites");
+  wrapper.append(el("h3", "", u("linked")), el("p", "muted", u("linkedHelp")));
+  const sites = config.rules.filter((r) => r.profileId === profile.id);
+  if (!sites.length) {
+    wrapper.append(el("p", "muted", u("noLinked")));
+    return wrapper;
+  }
+  const chips = el("div", "site-chips");
+  for (const site of sites) {
+    const chip = el("span", "site-chip"),
+      detach = button(
+        "×",
+        () => withChange((next) => detachSites(next, profile.id, [site.id])),
+        "chip-remove",
+      );
+    detach.setAttribute("aria-label", `${u("detach")} ${site.host}`);
+    chip.append(el("span", "domain", site.host), detach);
+    chips.append(chip);
+  }
+  wrapper.append(
+    chips,
+    button(
+      u("detachAll"),
+      () =>
+        confirmChange(
+          u("detachAll"),
+          `${u("detachConfirm")} (${sites.length})`,
+          async () => {
+            const next = structuredClone(config);
+            detachSites(
+              next,
+              profile.id,
+              sites.map((r) => r.id),
+            );
+            await commit(next);
+          },
+        ),
+      "button small",
+    ),
+  );
+  return wrapper;
+}
+function deleteProfileDialog(profile: Profile): void {
+  const replacement = select(
+    [
+      [NO_BREAKS, u("noBreaks")],
+      ...config.profiles
+        .filter((p) => p.id !== profile.id && p.id !== NO_BREAKS)
+        .map((p) => [p.id, p.name] as [string, string]),
+    ],
+    NO_BREAKS,
+  );
+  replacement.name = "replacementProfile";
+  confirmChange(
+    u("deleteProfile"),
+    `${profile.name} — ${u("deleteProfileHelp")}`,
+    async () => {
+      const next = structuredClone(config);
+      removeProfile(next, profile.id, replacement.value);
+      openProfiles.delete(profile.id);
+      await commit(next);
+    },
+    field(u("replaceWith"), replacement, u("linkedHelp")),
+  );
+}
+function profilesView(main: HTMLElement): void {
+  const add = el("details", "card create-panel");
+  add.append(
+    el("summary", "section-summary", u("addProfile")),
+    profileEditor(),
+  );
+  main.append(add);
   const cards = el("div", "profile-grid");
-  for (const profile of config.profiles) {
-    const c = card();
-    c.append(
-      el("div", "eyebrow", tr("profile")),
+  for (const profile of config.profiles.filter((p) => p.id !== NO_BREAKS)) {
+    const cardNode = card();
+    cardNode.classList.add("profile-card");
+    cardNode.dataset.profileId = profile.id;
+    const title = el("div", "section-header");
+    title.append(
       el("h2", "", profile.name),
+      el(
+        "span",
+        "badge",
+        String(config.rules.filter((r) => r.profileId === profile.id).length) +
+          " " +
+          tr("sites"),
+      ),
+    );
+    cardNode.append(
+      title,
       el(
         "p",
         "muted",
@@ -516,35 +986,30 @@ function profilesView(main: HTMLElement): void {
       ),
       el("p", "", profile.checklist.join(" · ")),
     );
-    const actions = el("div", "actions");
-    actions.append(
+    const details = el("details", "profile-details");
+    details.open = openProfiles.has(profile.id);
+    details.addEventListener("toggle", () => {
+      if (details.open) openProfiles.add(profile.id);
+      else openProfiles.delete(profile.id);
+    });
+    details.append(
+      el("summary", "button small", tr("edit")),
+      connectedSites(profile),
+      profileEditor(profile),
+    );
+    cardNode.append(
+      details,
       button(
-        tr("edit"),
-        () => {
-          editingProfile = profile.id;
-          renderOptions();
-        },
-        "button small",
+        u("deleteProfile"),
+        () => deleteProfileDialog(profile),
+        "button small danger profile-delete",
       ),
     );
-    const remove = button(
-      tr("delete"),
-      () =>
-        withChange((next) => {
-          if (next.rules.some((r) => r.profileId === profile.id))
-            throw Error("This profile is used by a website");
-          if (next.profiles.length === 1)
-            throw Error("Keep at least one profile");
-          next.profiles = next.profiles.filter((p) => p.id !== profile.id);
-        }),
-      "button small danger",
-    );
-    actions.append(remove);
-    c.append(actions);
-    cards.append(c);
+    cards.append(cardNode);
   }
   main.append(cards);
 }
+
 function reportsView(main: HTMLElement): void {
   const box = card(),
     controls = el("div", "actions"),
@@ -589,6 +1054,41 @@ function reportsView(main: HTMLElement): void {
         el("small", "muted", `${tr("paused")}: ${duration(v.pausedMs, lang)}`),
       );
       rows.append(r);
+    }
+    const breaks = (state.breaks ?? [])
+      .filter((entry) => {
+        const date = dayKey(entry.endedAt);
+        return date >= from.value && date <= to.value;
+      })
+      .sort((a, b) => b.endedAt - a.endedAt)
+      .slice(0, 100);
+    if (breaks.length) {
+      const report = el("section", "break-report");
+      report.append(el("h2", "", u("breakHistory")));
+      for (const entry of breaks) {
+        const row = el("article"),
+          line = el("div", "report-line");
+        line.append(
+          el("strong", "domain", entry.host),
+          el("span", "badge", u(entry.skipped ? "skipped" : "completed")),
+        );
+        row.append(
+          line,
+          el("small", "muted", new Date(entry.endedAt).toLocaleString(lang)),
+        );
+        const activities = el("div", "site-chips");
+        for (const text of entry.checklist)
+          activities.append(
+            el(
+              "span",
+              "site-chip",
+              (entry.checked.includes(text) ? "✓ " : "○ ") + text,
+            ),
+          );
+        row.append(activities);
+        report.append(row);
+      }
+      rows.append(report);
     }
   };
   for (const [key, days] of [
@@ -675,6 +1175,7 @@ function settingsView(main: HTMLElement): void {
           next.profiles = next.profiles.map((p) => ({
             ...p,
             required: true,
+            allowSkipBreak: false,
             checklist: p.checklist.length
               ? p.checklist
               : ["Drink water", "Take a walk", "Stretch"],
@@ -701,12 +1202,25 @@ function settingsView(main: HTMLElement): void {
 function throwError(text: string): void {
   announce(text, true);
 }
+let publicViewKey = "",
+  activeBreak: Verdict | null = null,
+  activityStage = "";
 function pauseForm(data: PublicData): HTMLElement {
   const box = card();
-  box.append(el("h2", "", tr("pause")));
+  box.classList.add("pause-card");
+  box.append(el("h2", "", tr("pause")), el("p", "muted", u("pauseHelp")));
+  const left = Math.max(0, data.pauseMax - data.pauseCount);
+  box.append(
+    el(
+      "p",
+      "allowance-summary",
+      `${u("pauseLeft")}: ${left} / ${data.pauseMax}`,
+    ),
+    el("small", "muted", u("pauseMaxHelp")),
+  );
   if (data.pauseUntil > Date.now()) {
     box.append(
-      el("p", "muted", new Date(data.pauseUntil).toLocaleTimeString(lang)),
+      el("p", "", new Date(data.pauseUntil).toLocaleTimeString(lang)),
       button(
         tr("resume"),
         () =>
@@ -719,60 +1233,159 @@ function pauseForm(data: PublicData): HTMLElement {
     );
     return box;
   }
-  const f = el("form", "stack"),
-    p = pinInput(),
+  if (!data.pauseEnabled) {
+    box.append(el("p", "muted", u("pauseDisabled")));
+    return box;
+  }
+  if (!data.pinSet) {
+    box.append(el("p", "muted", u("pinNeeded")));
+    return box;
+  }
+  const form = el("form", "stack"),
+    pin = pinInput(),
     time = select(
       PAUSE_MINUTES.map((n) => [String(n), `${n} ${tr("minutes")}`]),
       "15",
     );
-  p.required = true;
-  f.append(field(tr("minutes"), time), field(tr("pin"), p));
+  pin.required = true;
+  form.append(
+    field(tr("minutes"), time, u("pauseHelp")),
+    field(tr("pin"), pin),
+  );
   const submit = el("button", "button primary", tr("pause"));
   submit.type = "submit";
-  submit.disabled =
-    !data.pauseEnabled || !data.pinSet || data.pauseCount >= data.pauseMax;
-  f.append(
-    submit,
-    el("small", "muted", `${data.pauseCount} / ${data.pauseMax}`),
-  );
-  formSubmit(f, async () => {
+  submit.disabled = left === 0;
+  form.append(submit);
+  formSubmit(form, async () => {
     await request("pause", {
-      pin: p.value,
+      pin: pin.value,
       minutes: Number(time.value),
       url: currentUrl,
     });
-    p.value = "";
+    pin.value = "";
     await renderPublic();
   });
-  box.append(f);
+  box.append(form);
   return box;
 }
+function updateBreakClock(): void {
+  const v = activeBreak;
+  if (!v) return;
+  const seconds = Math.max(0, Math.ceil((v.breakUntil - Date.now()) / 1000));
+  const count = document.getElementById("break-countdown");
+  if (count) {
+    const text = `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+    if (count.textContent !== text) count.textContent = text;
+  }
+  const list = document.getElementById("break-activities"),
+    stage = v.checklistRequired && seconds > 0 ? "reminders" : "checkboxes";
+  if (list && stage !== activityStage) {
+    activityStage = stage;
+    list.replaceChildren();
+    list.className = "break-activities " + stage;
+    for (const [index, text] of v.checklist.entries()) {
+      if (stage === "reminders") {
+        const item = el("div", "activity-reminder");
+        item.append(el("span", "activity-symbol", "✦"), el("span", "", text));
+        list.append(item);
+      } else {
+        const item = toggle(text, checks.has(index));
+        item.node.classList.add("activity-checkbox");
+        item.control.id = "break-check-" + index;
+        item.control.addEventListener("change", () => {
+          if (item.control.checked) checks.add(index);
+          else checks.delete(index);
+          updateBreakClock();
+          run(async () => {
+            await request("breakChecks", {
+              ruleId: v.ruleId,
+              breakUntil: v.breakUntil,
+              checks: [...checks],
+            });
+          });
+        });
+        list.append(item.node);
+      }
+    }
+  }
+  const help = document.getElementById("break-instructions");
+  if (help) {
+    const text = v.checklistRequired
+      ? seconds > 0
+        ? u("remember") + " " + u("requiredHelp")
+        : u("confirmActivities")
+      : u("optionalHelp");
+    if (help.textContent !== text) help.textContent = text;
+  }
+  const done = document.querySelector<HTMLButtonElement>("#finish-break");
+  if (done)
+    done.disabled =
+      seconds > 0 || (v.checklistRequired && checks.size < v.checklist.length);
+}
 async function renderPublic(): Promise<void> {
-  const focusedId = document.activeElement?.id;
   const data = await request<PublicData>("public", { url: currentUrl });
   setLanguage(data.language);
+  const v = data.current,
+    reason = v?.reason ?? "none";
+  const key = JSON.stringify([
+    page,
+    lang,
+    reason,
+    v?.ruleId,
+    v?.breakUntil,
+    v?.checklistRequired,
+    v?.allowSkip,
+    v?.checklist,
+    v?.resetAt,
+    data.pauseUntil,
+    data.pauseCount,
+    data.pauseMax,
+    data.pauseEnabled,
+    data.pinSet,
+  ]);
+  if (key === publicViewKey) {
+    const today = document.getElementById("public-today");
+    if (today) today.textContent = duration(data.todayMs, lang);
+    const remaining = document.getElementById("public-remaining");
+    if (remaining && v?.leftMs != null)
+      remaining.textContent = `${tr("remaining")}: ${duration(v.leftMs + 59_999, lang)}`;
+    if (reason === "break") {
+      activeBreak = v;
+      updateBreakClock();
+    }
+    return;
+  }
+  publicViewKey = key;
+  activeBreak = null;
+  activityStage = "";
+  checks.clear();
+  for (const check of v?.checks ?? []) checks.add(check);
   app.replaceChildren();
   const main = el("main", page === "popup" ? "popup" : "blocked");
   main.append(brand());
   if (page === "popup") {
     main.append(el("p", "muted", tr("intro")));
     const summary = card();
-    if (data.current) summary.append(el("strong", "domain", data.current.host));
-    summary.append(
-      el("p", "metric", duration(data.todayMs, lang)),
-      el("small", "muted", tr("today")),
-    );
-    if (data.current?.leftMs != null)
-      summary.append(
-        el(
-          "p",
-          "",
-          `${tr("remaining")}: ${duration(data.current.leftMs + 59_999, lang)}`,
-        ),
+    if (v) summary.append(el("strong", "domain", v.host));
+    const today = el("p", "metric", duration(data.todayMs, lang));
+    today.id = "public-today";
+    summary.append(today, el("small", "muted", tr("today")));
+    if (v?.leftMs != null) {
+      const remaining = el(
+        "p",
+        "",
+        `${tr("remaining")}: ${duration(v.leftMs + 59_999, lang)}`,
       );
+      remaining.id = "public-remaining";
+      summary.append(remaining);
+    }
+    main.append(summary);
+    if (
+      reason === "quota" ||
+      (data.pauseUntil > Date.now() && reason !== "break")
+    )
+      main.append(pauseForm(data));
     main.append(
-      summary,
-      pauseForm(data),
       button(
         tr("settings"),
         () => {
@@ -782,11 +1395,10 @@ async function renderPublic(): Promise<void> {
       ),
     );
   } else {
-    const v = data.current,
-      reason = v?.reason ?? "none",
-      hero = card();
+    const hero = card();
+    hero.classList.add("lock-card");
     hero.append(
-      el("div", "break-icon", reason === "break" ? "☘" : "◷"),
+      el("div", "break-icon", reason === "break" ? "✦" : "◷"),
       el(
         "h1",
         "",
@@ -802,51 +1414,60 @@ async function renderPublic(): Promise<void> {
       ),
       el("p", "domain muted", v?.host ?? ""),
     );
-    if (v) {
+    if (v)
       hero.append(
         el("p", "", `${tr("used")}: ${duration(data.todayMs, lang)}`),
       );
-      if (v.resetAt && reason === "quota")
-        hero.append(
-          el(
-            "p",
-            "",
-            `${tr("resetAt")}: ${new Date(v.resetAt).toLocaleString(lang)}`,
-          ),
-        );
-      if (reason === "break") {
-        const left = Math.max(0, Math.ceil((v.breakUntil - Date.now()) / 1000)),
-          count = el(
-            "p",
-            "countdown",
-            `${Math.floor(left / 60)}:${String(left % 60).padStart(2, "0")}`,
-          );
-        hero.append(count);
-        for (const [i, label] of v.checklist.entries()) {
-          const c = toggle(label, checks.has(i));
-          c.control.id = "break-check-" + i;
-          c.control.disabled = left > 0;
-          c.control.addEventListener("change", () => {
-            if (c.control.checked) checks.add(i);
-            else checks.delete(i);
-          });
-          hero.append(c.node);
-        }
-        const done = button(
-          tr("continue"),
+    if (v?.resetAt && reason === "quota")
+      hero.append(
+        el(
+          "p",
+          "",
+          `${tr("resetAt")}: ${new Date(v.resetAt).toLocaleString(lang)}`,
+        ),
+      );
+    if (v && reason === "break") {
+      const count = el("p", "countdown");
+      count.id = "break-countdown";
+      count.setAttribute("role", "timer");
+      count.setAttribute("aria-live", "off");
+      count.setAttribute("aria-label", tr("remaining"));
+      const help = el("p", "muted");
+      help.id = "break-instructions";
+      help.setAttribute("role", "status");
+      const activities = el("div", "break-activities");
+      activities.id = "break-activities";
+      const done = button(
+        tr("continue"),
+        () =>
+          run(async () => {
+            await request("breakDone", {
+              ruleId: v.ruleId,
+              checks: [...checks],
+            });
+            location.replace(currentUrl);
+          }),
+        "button primary wide",
+      );
+      done.id = "finish-break";
+      done.disabled = true;
+      hero.append(count, help, activities, done);
+      activeBreak = v;
+      if (v.allowSkip) {
+        const skip = button(
+          u("skip"),
           () =>
             run(async () => {
-              await request("breakDone", {
+              await request("breakSkip", {
                 ruleId: v.ruleId,
-                checks: [...checks],
+                breakUntil: v.breakUntil,
               });
               location.replace(currentUrl);
             }),
-          "button primary wide",
+          "button subtle wide",
         );
-        done.disabled =
-          left > 0 || (v.needsChecklist && checks.size < v.checklist.length);
-        hero.append(done);
+        skip.id = "skip-break";
+        hero.append(skip);
       }
     }
     if (!v?.blocked)
@@ -854,14 +1475,20 @@ async function renderPublic(): Promise<void> {
         button(
           tr("back"),
           () => {
-            location.replace(currentUrl);
+            if (currentUrl) location.replace(currentUrl);
           },
           "button primary wide",
         ),
       );
+    main.append(hero);
+    if (
+      reason === "quota" ||
+      (data.pauseUntil > Date.now() &&
+        reason !== "break" &&
+        reason !== "manual")
+    )
+      main.append(pauseForm(data));
     main.append(
-      hero,
-      pauseForm(data),
       button(
         tr("settings"),
         () => {
@@ -872,8 +1499,9 @@ async function renderPublic(): Promise<void> {
     );
   }
   app.append(main);
-  if (focusedId) document.getElementById(focusedId)?.focus();
+  updateBreakClock();
 }
+
 async function start(): Promise<void> {
   if (page === "options") {
     const data = await request<PublicData>("public");
@@ -906,14 +1534,13 @@ async function start(): Promise<void> {
       currentUrl = "";
     }
     await renderPublic();
-    if (page === "blocked")
+    if (page === "blocked") {
       setInterval(() => {
-        if (
-          document.visibilityState === "visible" &&
-          !document.activeElement?.closest("form")
-        )
-          run(renderPublic);
+        if (document.visibilityState === "visible") run(renderPublic);
       }, 5000);
+      setInterval(updateBreakClock, 250);
+      document.addEventListener("visibilitychange", updateBreakClock);
+    }
   }
 }
 run(start);

@@ -10,11 +10,19 @@
 - Seven-language menu surface, Persian/Arabic RTL, popup and lock page.
 - Unit/security tests, isolated Firefox smoke harness and English/Persian UI previews.
 
+## 0.2 alpha — implemented
+
+- Inline editors, contextual help, linked-site management and a three-step copy wizard.
+- Live break countdown, delayed required confirmations, optional progress and local activity reports.
+- Explicit per-profile early-skip setting, off by default; quota pauses cannot bypass breaks.
+- Animated dismissible usage reminders, compact PIN controls and an indigo visual refresh.
+- Conservative migration of existing profiles without resetting their quota usage.
+
 ## Before a public stable release
 
 1. Add a reviewed, licensed adult-domain list provider with bounded parsing, cached last-known-good data, update status and PIN-protected exceptions. Do not download executable logic or send browsing domains to a classification service.
 2. Validate media behavior on YouTube and Aparat, cross-origin media, Picture-in-Picture, multiple windows/tabs and browser crash/restart/sleep scenarios. Refine clock changes and timezone behavior.
-3. Add end-to-end coverage for quota expiry, idle cutoff, first-use reset, mandatory checklist and global breaks; expand accessibility, language and keyboard testing.
+3. Extend actual-addon end-to-end coverage beyond quota expiry to idle cutoff, first-use reset, mandatory checklist and global breaks; expand accessibility, language and keyboard testing. Current interactive break/editor tests use the real UI with a local mock transport.
 4. Validate Firefox on macOS and Linux and record measured CPU/memory/package metrics. Confirm performance for large rule/report sets.
 5. Design PIN recovery and explicit pause policies for parent/child setups. Provide a separate, transparent administrative Firefox-policy guide; do not promise removal prevention for ordinary installs.
 6. Finish translation review and localized errors/reminder text. Improve onboarding, report refresh and explicit profile-copy confirmation.

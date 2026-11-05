@@ -1,6 +1,8 @@
 import {
   account,
   acknowledgeBreak,
+  skipBreak,
+  updateBreakChecks,
   dayKey,
   defaultConfig,
   evaluate,
@@ -15,6 +17,7 @@ import {
 import type { Config, State } from "./core.ts";
 import { createPin, trustedPage, verifyPin } from "./auth.ts";
 import type { PinRecord } from "./auth.ts";
+import { reconcileProfileState } from "./ux-policy.ts";
 
 interface Sample {
   url: string;
@@ -219,6 +222,11 @@ async function message(
     return { token: await issueSession(now) };
   }
   if (msg.type === "pause") {
+    const host = targetHost(msg.url);
+    if (!host || evaluate(config, state, host, now).reason !== "quota")
+      throw Error(
+        "A temporary pause is available only after a website allowance is exhausted",
+      );
     if (!config.pauseEnabled || !pin)
       throw Error("Pause is unavailable. Set a PIN in settings first.");
     if (!(await verifyPin(pin, msg.pin, now))) {
@@ -251,6 +259,16 @@ async function message(
     await save(true);
     return true;
   }
+  if (msg.type === "breakChecks" || msg.type === "breakSkip") {
+    if (typeof msg.ruleId !== "string") throw Error("Invalid break");
+    if (msg.breakUntil !== state.sites[msg.ruleId]?.breakUntil)
+      throw Error("This break has changed. Refresh the page.");
+    if (msg.type === "breakChecks")
+      updateBreakChecks(config, state, msg.ruleId, msg.checks, now);
+    else skipBreak(config, state, msg.ruleId, now);
+    await save(true);
+    return true;
+  }
   requireSession(msg.token, now);
   if (msg.type === "read") return { config, state, pinSet: !!pin };
   if (msg.type === "save") {
@@ -260,6 +278,7 @@ async function message(
       sessions = {};
       await browser.storage.session.set({ sessions });
     }
+    reconcileProfileState(config, next, state);
     config = next;
     if (!config.pauseEnabled) state.pauseUntil = 0;
     prune(config, state, now);
@@ -274,6 +293,7 @@ async function message(
   }
   if (msg.type === "clearReports") {
     state.days = {};
+    state.breaks = [];
     await save(true);
     return true;
   }
