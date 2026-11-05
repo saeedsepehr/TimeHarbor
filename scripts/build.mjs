@@ -49,7 +49,7 @@ for (const size of [16, 32, 48, 96, 128]) {
 }
 const manifest = {
   manifest_version: 3,
-  name: "TimeHarbor",
+  name: "TimeHarbor: Website Limits & Healthy Breaks",
   version: JSON.parse(await readFile("package.json", "utf8")).version,
   description:
     "Mindful browsing with private time limits, healthy breaks, PIN controls and local reports.",
