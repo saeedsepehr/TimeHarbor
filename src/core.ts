@@ -1,3 +1,4 @@
+import { zonedDay, zonedNextMidnight, validTimeZone } from "./calendar.ts";
 export type Language = "en" | "fa" | "ar" | "es" | "fr" | "de" | "zh";
 export interface Profile {
   id: string;
@@ -24,6 +25,8 @@ export interface Rule {
 export interface Config {
   version: 1;
   language: Language;
+  languageMode?: "browser" | "manual";
+  timeZone?: string;
   reportScope: "selected" | "all";
   retentionDays: number;
   pauseEnabled: boolean;
@@ -59,6 +62,13 @@ export interface State {
   pauseDay: string;
   pauseCount: number;
   breaks?: BreakRecord[];
+  segments?: UsageSegment[];
+}
+export interface UsageSegment {
+  host: string;
+  from: number;
+  to: number;
+  paused: boolean;
 }
 export interface Verdict {
   blocked: boolean;
@@ -76,10 +86,11 @@ export interface Verdict {
   checks: number[];
 }
 export const PAUSE_MINUTES = [5, 15, 30, 60, 120, 180, 240] as const;
-export function defaultConfig(): Config {
+export function defaultConfig(language: Language = "en"): Config {
   return {
     version: 1,
-    language: "en",
+    language,
+    languageMode: "browser",
     reportScope: "selected",
     retentionDays: 90,
     pauseEnabled: true,
@@ -88,14 +99,17 @@ export function defaultConfig(): Config {
     profiles: [
       {
         id: "balanced",
-        name: "Balanced",
+        name: language === "fa" ? "متعادل" : "Balanced",
         breakEveryMinutes: 30,
         breakMinutes: 5,
         scope: "site",
         required: false,
         allowSkipBreak: false,
-        checklist: ["Drink water", "Take a walk", "Stretch"],
-        backgroundMedia: true,
+        checklist:
+          language === "fa"
+            ? ["آب بخور", "کمی قدم بزن", "حرکات کششی انجام بده"]
+            : ["Drink water", "Take a walk", "Stretch"],
+        backgroundMedia: false,
         idleMinutes: 5,
         reminderMinutes: 10,
       },
@@ -130,11 +144,13 @@ export function normalizeHost(input: string): string {
     throw Error("Invalid domain");
   return h;
 }
-export function dayKey(at: number): string {
+export function dayKey(at: number, timeZone?: string): string {
+  if (timeZone) return zonedDay(at, timeZone);
   const d = new Date(at);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
-export function nextMidnight(at: number): number {
+export function nextMidnight(at: number, timeZone?: string): number {
+  if (timeZone) return zonedNextMidnight(at, timeZone);
   const d = new Date(at);
   d.setHours(24, 0, 0, 0);
   return d.getTime();
@@ -158,17 +174,22 @@ export function siteFor(s: State, r: Rule): SiteState {
     awaitingChecks: false,
   });
 }
-function syncWindow(r: Rule, st: SiteState, at: number): number | null {
+function syncWindow(
+  r: Rule,
+  st: SiteState,
+  at: number,
+  timeZone?: string,
+): number | null {
   if (st.windowStart === null)
-    return r.reset === "daily" ? nextMidnight(at) : null;
+    return r.reset === "daily" ? nextMidnight(at, timeZone) : null;
   const end =
     r.reset === "daily"
-      ? nextMidnight(st.windowStart)
+      ? nextMidnight(st.windowStart, timeZone)
       : st.windowStart + r.hours * 3_600_000;
   if (at >= end || at < st.windowStart) {
     st.windowStart = null;
     st.usedMs = 0;
-    return r.reset === "daily" ? nextMidnight(at) : null;
+    return r.reset === "daily" ? nextMidnight(at, timeZone) : null;
   }
   return end;
 }
@@ -196,7 +217,7 @@ export function evaluate(
   };
   if (r) {
     const st = siteFor(s, r);
-    result.resetAt = syncWindow(r, st, now);
+    result.resetAt = syncWindow(r, st, now, c.timeZone);
     result.usedMs = st.usedMs;
     result.leftMs = Math.max(0, r.minutes * 60_000 - st.usedMs);
     if (r.mode === "block")
@@ -324,13 +345,13 @@ export function account(
   while (cursor < to) {
     const v = evaluate(c, s, rawHost, cursor);
     if (v.blocked) return;
-    let end = Math.min(to, nextMidnight(cursor));
+    let end = Math.min(to, nextMidnight(cursor, c.timeZone));
     if (r) {
       const st = siteFor(s, r),
         p = profileFor(c, r);
       if (!paused) {
         if (st.windowStart === null) st.windowStart = cursor;
-        const resetAt = syncWindow(r, st, cursor);
+        const resetAt = syncWindow(r, st, cursor, c.timeZone);
         if (resetAt) end = Math.min(end, resetAt);
         end = Math.min(
           end,
@@ -345,10 +366,22 @@ export function account(
     }
     const ms = end - cursor;
     if (ms <= 0) return;
-    const day = (s.days[dayKey(cursor)] ??= {});
+    const day = (s.days[dayKey(cursor, c.timeZone)] ??= {});
     const usage = (day[host] ??= { usedMs: 0, pausedMs: 0 });
     usage.usedMs += ms;
     if (paused) usage.pausedMs += ms;
+    if (s.segments) {
+      const last = s.segments.at(-1);
+      if (
+        last &&
+        last.host === host &&
+        last.paused === paused &&
+        last.to === cursor &&
+        dayKey(last.from, c.timeZone) === dayKey(cursor, c.timeZone)
+      )
+        last.to = end;
+      else s.segments.push({ host, from: cursor, to: end, paused });
+    }
     if (r) {
       const st = siteFor(s, r),
         p = profileFor(c, r);
@@ -384,13 +417,22 @@ export function validateConfig(value: unknown): Config {
   if (record(value) && Array.isArray(value.profiles))
     value = {
       ...value,
+      languageMode: value.languageMode ?? "manual",
       profiles: value.profiles.map((p) =>
-        record(p) ? { ...p, allowSkipBreak: p.allowSkipBreak ?? false } : p,
+        record(p)
+          ? {
+              ...p,
+              allowSkipBreak: p.allowSkipBreak ?? false,
+              backgroundMedia: false,
+            }
+          : p,
       ),
     };
   if (
     !record(value) ||
     value.version !== 1 ||
+    (value.timeZone !== undefined && !validTimeZone(value.timeZone)) ||
+    !["browser", "manual"].includes(String(value.languageMode)) ||
     !["en", "fa", "ar", "es", "fr", "de", "zh"].includes(
       String(value.language),
     ) ||
@@ -456,13 +498,17 @@ export function validateConfig(value: unknown): Config {
   return structuredClone(value) as unknown as Config;
 }
 export function prune(c: Config, s: State, now: number): void {
-  const cutoff = new Date(now);
-  cutoff.setDate(cutoff.getDate() - c.retentionDays + 1);
-  const min = dayKey(cutoff.getTime());
+  const cutoff = new Date(dayKey(now, c.timeZone) + "T12:00:00Z");
+  cutoff.setUTCDate(cutoff.getUTCDate() - c.retentionDays + 1);
+  const min = cutoff.toISOString().slice(0, 10);
   for (const day of Object.keys(s.days)) if (day < min) delete s.days[day];
   s.breaks = (s.breaks ?? [])
-    .filter((b) => dayKey(b.endedAt) >= min)
+    .filter((b) => dayKey(b.endedAt, c.timeZone) >= min)
     .slice(-10000);
+  if (s.segments) {
+    const cutoff = now - Math.max(c.retentionDays, 8) * 86400000;
+    s.segments = s.segments.filter((segment) => segment.to >= cutoff);
+  }
   for (const id of Object.keys(s.sites))
     if (!c.rules.some((r) => r.id === id)) delete s.sites[id];
 }

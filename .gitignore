@@ -7,3 +7,6 @@ coverage/
 web-ext-artifacts/
 outputs/
 docs/ecc-installation.json
+.env
+.env.*
+!**/.env.example

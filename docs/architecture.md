@@ -18,7 +18,7 @@ TimeHarbor targets Firefox and Chromium desktop MV3. Runtime code is TypeScript,
 
 ## Time accounting
 
-Content scripts report every five seconds when visible, interacting or playing media. The background owns time, tab identity, focused-window state and URL identity. Interaction refreshes an idle deadline; HTML media playback can continue counting in the background according to the assigned profile. Observations for the same configured domain are coalesced before charging.
+Content scripts report every five seconds while visible and immediately send visibility changes. The background owns time, tab identity, focused-window state and URL identity. Only the visible tab in the focused, non-minimized window can charge time. Hidden/inactive tabs never receive idle grace or a media exception. Interaction refreshes the foreground idle deadline, and foreground HTML media counts while playing. Observations for the same configured domain are coalesced before charging.
 
 Each charge is split at local midnight, the quota reset boundary and any allowance/break boundary. Daily quotas use local calendar days. Periodic quotas anchor on first observed charged use; after expiry, the next charged use starts the next window. Full-URL history is not used for reporting.
 
@@ -42,7 +42,15 @@ Firefox uses an MV3 event page and blocking webRequest. Chromium uses a separate
 
 Chromium network rules are derived from the same authoritative core verdicts. More-specific domains have higher priority. A global break produces a single HTTP(S) main-frame redirect rule; individual blocked rules redirect to the packaged, web-accessible lock page. Full return URLs use a raw `target=` tail so query separators are preserved; UI parsing accepts only credential-free HTTP(S) targets. Dynamic rules continue blocking while the worker is asleep and are replaced atomically when policy changes. A 30-second recovery alarm reconciles time-dependent rules; after a deadline, an old rule may remain briefly until that alarm or another event wakes the worker. The lock page then re-evaluates current policy.
 
-Chromium persists observed tab activity/reminder checkpoints in storage.session alongside local usage checkpoints. A restored worker discards long unobserved gaps, reacquires active tabs/windows, and regenerates rules. It does not use a keepalive loop. Cross-browser settings transfer is a manual file operation; usage accounting and PINs remain independent. Automatic sync is not implemented.
+Chromium persists observed tab activity/reminder checkpoints in storage.session alongside local usage checkpoints. A restored worker discards long unobserved gaps, reacquires active tabs/windows, and regenerates rules. It does not use a keepalive loop. Manual file transfer is available. Google shared-usage sync is prepared but gated on deployment/credentials and live acceptance; the shipped build leaves it disabled.
+
+## Optional cloud boundaries — activation pending
+
+`server/oauth-broker.mjs` handles authorization-code exchange/refresh with a server-side secret, signed expiring state, exact browser redirect allowlists and PKCE. The extension receives Google tokens only in privileged code; refresh credentials stay in local extension storage and access tokens in session storage. Messages and exports never return them. Account authorization runs outside the serial accounting queue.
+
+`src/drive.ts` reads/writes only the application's Drive app-data namespace. `src/sync-policy.ts` merges the latest per-installation/day snapshots and recomputes shared quotas from consumed intervals, with canonical window hints and a shared time zone. Local break state and PINs are not synchronized. Old aggregate reports can be transferred; their missing exact activity intervals are not invented for historical charts. Current quota counters are carried into the initial ledger.
+
+`src/cloud-exchange.ts` uses independent writer filenames, version validation, response limits, at most eight fresh reads/twelve file requests per batch and a 4 MiB remote cache cap. Newest usage/settings are processed first, unchanged content is not uploaded again, and partial history continues in later batches. Only short snapshot/commit operations enter the accounting queue. Cloud refresh is approximately once a minute while running; it is eventually consistent and cannot impose a real-time cross-device cap while offline. Live Google and deployed-service tests remain required.
 
 References: [Chrome declarative network rules](https://developer.chrome.com/docs/extensions/reference/api/declarativeNetRequest), [service-worker lifecycle](https://developer.chrome.com/docs/extensions/develop/concepts/service-workers/lifecycle), [Firefox actions](https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/API/action).
 

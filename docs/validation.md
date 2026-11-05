@@ -1,9 +1,9 @@
-# Validation evidence — 0.3.0 alpha
+# Validation evidence — 0.4.0 alpha
 
 ## Executed locally
 
 - Node 22.14.0 on Windows.
-- Twenty-four unit/security tests: quota/break policies, PIN authorization, retention, profile migration/reassignment, copy targets, settings round-trip with credential exclusion, malformed/oversized imports, imported ID collisions, Chromium network precedence and safe return-URL parsing.
+- Thirty-eight unit/security tests: quota/break policies, PIN authorization, retention, foreground-only activity, browser-locale selection, simultaneous quota/break expiry, safe return URLs, configuration transfer, bounded independent cloud writers, duplicate-snapshot replacement, shared quotas/time zones/DST, Drive namespace/size guards, OAuth state/PKCE/origin validation and a full code/refresh exchange against a fake Google endpoint.
 - Strict TypeScript compilation.
 - Mozilla web-ext lint: zero errors, notices or warnings after setting Firefox minimum version 142.
 - Firefox browser smoke: **PASS** on Windows Firefox **159.0.1**, using a Selenium-managed isolated profile. It exercises the actual temporary extension: UI form creates a website, the real content script records approximately twelve seconds of foreground usage, the settings form selects Persian and sets a PIN, missing sessions and wrong PINs are rejected, the correct PIN opens a session, a one-minute quota expires, premature pause requests are rejected, PIN-protected pausing/resuming works, and blocked navigation redirects to the packaged lock page.
@@ -22,6 +22,8 @@ The browser test does not use a normal user Firefox profile, real PIN, third-par
 Chromium tests copy `dist-chromium/` to an ignored test directory and append the same test-only helper. Installed Chrome/Edge are launched headless in fresh profiles with local DevTools debugging, using the official `Extensions.loadUnpacked` command. No ChromeDriver or global dependency is required. Only the spawned test browser is closed. Source files for test helpers are not shipped in either package.
 
 ## Not established by these results
+
+- Real Google login, grant refresh/revocation, deployed OAuth infrastructure or live multi-browser Drive synchronization. The provider is disabled in the distributed build. Mocked protocol tests are preparation, not live acceptance or a third-party security audit.
 
 - macOS/Linux behavior, Chromium versions other than those above, or other Chromium browsers such as Brave, Vivaldi and Opera.
 - Complete compatibility with YouTube/Aparat media modes, cross-origin players or Picture-in-Picture.

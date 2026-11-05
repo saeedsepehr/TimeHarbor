@@ -1,6 +1,6 @@
 {
   "name": "timeharbor",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": true,
   "type": "module",
   "description": "A local-first Firefox extension for mindful browsing, time limits and healthy breaks.",
@@ -12,8 +12,8 @@
     "build": "node scripts/build.mjs",
     "build:chromium": "node scripts/build.mjs --chromium",
     "typecheck": "tsc --noEmit",
-    "test": "node --experimental-strip-types --test tests/*.test.ts",
-    "test:coverage": "node --experimental-strip-types --experimental-test-coverage --test tests/*.test.ts",
+    "test": "node --experimental-strip-types --test tests/*.test.ts tests/*.test.mjs",
+    "test:coverage": "node --experimental-strip-types --experimental-test-coverage --test tests/*.test.ts tests/*.test.mjs",
     "lint:extension": "web-ext lint --source-dir dist --warnings-as-errors",
     "package": "npm run build && web-ext build --source-dir dist --artifacts-dir outputs --overwrite-dest",
     "package:chromium": "npm run build:chromium && web-ext build --source-dir dist-chromium --artifacts-dir outputs --filename timeharbor-chromium-{version}.zip --overwrite-dest",
@@ -21,7 +21,7 @@
     "test:firefox": "node --experimental-strip-types scripts/firefox-smoke.mjs",
     "test:chromium": "node --experimental-strip-types scripts/chromium-smoke.mjs",
     "test:edge": "node --experimental-strip-types scripts/chromium-smoke.mjs --edge",
-    "format:check": "prettier --check src tests public scripts/*.mjs scripts/firefox-harness.js"
+    "format:check": "prettier --check src tests public scripts/*.mjs scripts/firefox-harness.js server/*.mjs"
   },
   "devDependencies": {
     "@types/firefox-webext-browser": "^143.0.1",

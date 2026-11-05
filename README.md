@@ -4,7 +4,7 @@
 
 TimeHarbor is an open-source desktop browser extension for mindful browsing, healthier breaks, and clearer awareness of time. It is designed for personal productivity and configurable family routines, with reports stored on your device.
 
-**Status: 0.3.0 alpha.** Working early implementation; not yet published in browser stores or signed on Mozilla Add-ons. Targets are Firefox 142+ and Chromium 120+ on desktop. Automated browser checks have run on Windows; macOS and Linux still require validation.
+**Status: 0.4.0 alpha.** Working early implementation; not yet published in browser stores or signed on Mozilla Add-ons. Targets are Firefox 142+ and Chromium 120+ on desktop. Automated browser checks have run on Windows; macOS and Linux still require validation.
 
 [راهنمای فارسی](README.fa.md) · [Roadmap](docs/roadmap.md) · [Architecture](docs/architecture.md) · [Privacy](PRIVACY.md)
 
@@ -21,10 +21,17 @@ TimeHarbor is an open-source desktop browser extension for mindful browsing, hea
 - A three-step copying wizard with source selection, identical-destination detection and a review before applying changes.
 - Manual JSON settings export/import across Firefox, Chrome, Edge and compatible browsers. Imports require settings authorization, show a confirmation, retain this installation's PIN and preserve quota identity for matching domains. PINs, sessions and usage history are never exported. There is no automatic cross-browser sync.
 - Native hover help, click-to-read help dialogs, toolbar popup controls and an About page with the author's contact links.
-- Foreground interaction accounting, five-minute default idle detection, background HTML audio/video accounting and usage reminders. One domain is charged once per observation interval even if several tabs are open.
+- Foreground-only accounting: only a visible tab in the focused, non-minimized window counts, including media. Other tabs/windows stop immediately, without idle grace. The five-minute default idle threshold applies only while staying on the visible site. Legacy background-media exceptions are migrated off.
 - Local usage reports with today, last-seven-days, last-thirty-days and custom date ranges, usage CSV export, break activity records and configurable retention (90 days by default).
 - English, Persian, Arabic, Spanish, French, German and Chinese menu labels, with RTL layouts for Persian and Arabic. Translations are preliminary; new explanatory help is English/Persian with English fallback, and validation messages currently use English.
-- No production runtime npm dependencies, account requirement, analytics, or external reporting service.
+- Browser-language defaults on new installations, with automatic/manual language selection in Settings. Existing language choices are retained.
+- No production runtime npm dependencies or analytics. Local operation needs no account. Google sync is optional and **not activated in the shipped development build**.
+
+## Google sync preparation
+
+Code for Google account authorization, Drive app-data backup, shared reports and shared quotas is prepared. Activation still requires the owner's Google Cloud/OAuth setup, a deployed HTTPS broker and live multi-browser acceptance. The default build has no broker address and cannot start sign-in or send reports to Google. See [server setup and acceptance](server/README.md).
+
+When configured and explicitly enabled, each installation writes independent counters, settings use revision ordering, and a common quota time zone keeps daily boundaries consistent. Network work is outside the accounting queue and history transfers use bounded batches. Offline use relies on cached shared usage; combined limits can be exceeded until reconnection. Native offline cross-browser sync would require a separate local companion and is not implemented. PINs, authorization sessions and break confirmations remain local.
 
 ## Development and temporary installation
 
@@ -43,8 +50,8 @@ In Firefox, open `about:debugging#/runtime/this-firefox`, choose **Load Temporar
 A temporary installation is removed when Firefox restarts. An unsigned ZIP is a development artifact, not a permanently installable Firefox release. Mozilla signing and store publication are future work.
 
 ```sh
-npm run package          # outputs/timeharbor-0.3.0.zip
-npm run package:chromium # outputs/timeharbor-chromium-0.3.0.zip
+npm run package          # outputs/timeharbor-0.4.0.zip
+npm run package:chromium # outputs/timeharbor-chromium-0.4.0.zip
 npm run test:coverage
 npm run test:firefox     # isolated Firefox addon + local HTTP fixture + UI previews
 npm run test:chromium    # installed Chrome, isolated headless profile + local fixture

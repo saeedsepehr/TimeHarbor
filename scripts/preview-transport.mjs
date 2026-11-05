@@ -2,7 +2,8 @@
 function previewRuntime(seed) {
   let config = seed.config,
     state = seed.state,
-    checks = [];
+    checks = [],
+    breakSkipped = false;
   const deadline = Date.now() + 4000;
   const scenario = seed.scenario;
   const response = (data) => ({ ok: true, data: structuredClone(data) });
@@ -22,8 +23,12 @@ function previewRuntime(seed) {
           checks = [...message.checks];
           return response(true);
         }
+        if (message.type === "breakSkip") {
+          breakSkipped = true;
+          return response(true);
+        }
         if (message.type === "public" || message.type === "activity") {
-          const isBreak = scenario.startsWith("break"),
+          const isBreak = scenario.startsWith("break") && !breakSkipped,
             required = scenario === "break-required";
           return response({
             language: config.language,
@@ -35,10 +40,14 @@ function previewRuntime(seed) {
             todayMs: 1200000,
             remind: scenario === "reminder",
             current: {
-              blocked: isBreak || scenario === "quota",
+              blocked:
+                isBreak ||
+                scenario === "quota" ||
+                (scenario === "break-skip-quota" && breakSkipped),
               reason: isBreak
                 ? "break"
-                : scenario === "quota"
+                : scenario === "quota" ||
+                    (scenario === "break-skip-quota" && breakSkipped)
                   ? "quota"
                   : "none",
               host: "youtube.com",
@@ -49,7 +58,8 @@ function previewRuntime(seed) {
               breakUntil: isBreak ? deadline : 0,
               needsChecklist: required && Date.now() >= deadline,
               checklistRequired: required,
-              allowSkip: scenario === "break-skip",
+              allowSkip:
+                scenario === "break-skip" || scenario === "break-skip-quota",
               checks,
               checklist: ["Drink water", "Take a walk", "Stretch"],
             },

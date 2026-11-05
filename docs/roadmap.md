@@ -26,6 +26,14 @@
 - Native hover help with an accessible click-to-read dialog, toolbar menu shortcuts and PNG toolbar icons.
 - About page with Saeed Sepehr's note and the supplied contact links.
 
+## 0.4 alpha — local fixes implemented; Google activation pending
+
+- Foreground-only accounting without background-media/idle-grace exceptions.
+- Browser-language defaults and automatic/manual selection.
+- Skip re-evaluates quota before navigating and preserves the return URL.
+- Prepared PKCE authorization broker, Drive app-data transport and independent-writer settings/report/shared-quota engine with bounded batches.
+- Google Cloud credentials, hosting, consent/redirect registration and live acceptance remain required. Sign-in is disabled in the shipped build.
+
 ## Before a public stable release
 
 1. Add a reviewed, licensed adult-domain list provider with bounded parsing, cached last-known-good data, update status and PIN-protected exceptions. Do not download executable logic or send browsing domains to a classification service.

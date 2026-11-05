@@ -9,7 +9,7 @@ export async function uxBrowserChecks(driver, base) {
     language = "en",
   ) => {
     await driver.get(
-      `${base}preview/ui/${path}?lang=${language}&scenario=${scenario}`,
+      `${base}preview/ui/${path}?lang=${language}&scenario=${scenario}${path === "blocked.html" ? "&url=" + encodeURIComponent("https://youtube.com/watch?v=demo&list=test") : ""}`,
     );
   };
   await open();
@@ -245,6 +245,19 @@ export async function uxBrowserChecks(driver, base) {
   await open("blocked.html", "break-skip");
   await driver.wait(until.elementLocated(By.id("skip-break")), 5000);
   checks.push("skip action is visible only when explicitly enabled");
+  await open("blocked.html", "break-skip-quota");
+  await driver.wait(until.elementLocated(By.id("skip-break")), 5000);
+  const returnLocation = await driver.getCurrentUrl();
+  await driver.findElement(By.id("skip-break")).click();
+  await driver.wait(until.elementLocated(By.css(".pause-card")), 5000);
+  assert.equal(await driver.getCurrentUrl(), returnLocation);
+  assert.equal(
+    new URL(await driver.getCurrentUrl()).searchParams.get("url"),
+    "https://youtube.com/watch?v=demo&list=test",
+  );
+  checks.push(
+    "Skip at quota exhaustion stays on a useful lock page and preserves the full return URL",
+  );
   await open("popup.html", "quota", "fa");
   await driver.wait(until.elementLocated(By.css(".pause-card")), 5000);
   assert.ok(

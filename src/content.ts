@@ -70,14 +70,15 @@ function notice(text: string): void {
     );
   setTimeout(() => host.remove(), 9000);
 }
-async function heartbeat(): Promise<void> {
+async function heartbeat(force = false): Promise<void> {
   const media = playing();
-  if (document.visibilityState !== "visible" && !media && !interacted) return;
+  if (!force && document.visibilityState !== "visible") return;
   try {
     const result = await browser.runtime.sendMessage({
       type: "activity",
       active: interacted,
       playing: media,
+      visible: document.visibilityState === "visible",
     });
     interacted = false;
     if (result?.ok && result.data?.remind) {
@@ -101,7 +102,7 @@ async function heartbeat(): Promise<void> {
   }
 }
 document.addEventListener("visibilitychange", () => {
-  void heartbeat();
+  void heartbeat(true);
 });
 for (const event of ["play", "pause", "ended"])
   document.addEventListener(

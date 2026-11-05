@@ -1,6 +1,6 @@
 # First store release — preparation draft
 
-This is a preparation document, not evidence of signing, store submission or acceptance. Current build: 0.3.0 alpha.
+This is a preparation document, not evidence of signing, store submission or acceptance. Current build: 0.4.0 alpha.
 
 ## Listing copy
 
@@ -36,8 +36,8 @@ No remote executable code, content classifier service, analytics, social embeds 
 ## Submission preparation
 
 - Reproduce with Node 22.14+, `npm ci`, type/unit checks, both build targets and the documented browser tests.
-- Firefox: review `outputs/timeharbor-0.3.0.zip`, provide source/build instructions as requested, and submit through the owner's Mozilla developer account for signing/review. Keep the existing Gecko ID.
-- Chromium: review `outputs/timeharbor-chromium-0.3.0.zip` and submit through the owner's store publisher account. Chrome and Edge have separate listings and review processes.
+- Firefox: review `outputs/timeharbor-0.4.0.zip`, provide source/build instructions as requested, and submit through the owner's Mozilla developer account for signing/review. Keep the existing Gecko ID.
+- Chromium: review `outputs/timeharbor-chromium-0.4.0.zip` and submit through the owner's store publisher account. Chrome and Edge have separate listings and review processes.
 - Use bundled 128px PNG icon and current screenshots; inspect store-specific asset requirements during submission.
 - Review translations, real YouTube/Aparat playback modes and target operating systems before claiming stable support. Current automated browser results cover Windows only.
 - Do not describe the extension as tamper-proof parental control or as a comprehensive child-safety filter. Online adult-domain lists are still roadmap work.

@@ -3,6 +3,21 @@ import { mkdir, cp, writeFile, readFile } from "node:fs/promises";
 import { iconPng } from "./icons.mjs";
 const chromium = process.argv.includes("--chromium");
 const outdir = chromium ? "dist-chromium" : "dist";
+const oauthBroker = process.env.TIMEHARBOR_OAUTH_BROKER ?? "";
+if (oauthBroker) {
+  const url = new URL(oauthBroker);
+  if (
+    url.protocol !== "https:" ||
+    url.pathname !== "/" ||
+    url.username ||
+    url.password ||
+    url.search ||
+    url.hash
+  )
+    throw Error(
+      "TIMEHARBOR_OAUTH_BROKER must be an HTTPS origin with a trailing slash",
+    );
+}
 await mkdir(outdir + "/ui", { recursive: true });
 await build({
   entryPoints: {
@@ -13,7 +28,10 @@ await build({
   outdir,
   bundle: true,
   target: chromium ? "chrome120" : "firefox142",
-  define: { __CHROMIUM__: JSON.stringify(chromium) },
+  define: {
+    __CHROMIUM__: JSON.stringify(chromium),
+    __OAUTH_BROKER__: JSON.stringify(oauthBroker),
+  },
   banner: chromium
     ? { js: "var browser = globalThis.browser || globalThis.chrome;" }
     : {},
@@ -39,6 +57,7 @@ const manifest = {
     "storage",
     "tabs",
     "alarms",
+    ...(oauthBroker ? ["identity"] : []),
     ...(chromium
       ? ["declarativeNetRequestWithHostAccess"]
       : ["webRequest", "webRequestBlocking"]),
@@ -76,7 +95,12 @@ const manifest = {
           gecko: {
             id: "timeharbor@saeedsepehr.github.io",
             strict_min_version: "142.0",
-            data_collection_permissions: { required: ["none"] },
+            data_collection_permissions: {
+              required: ["none"],
+              ...(oauthBroker
+                ? { optional: ["browsingActivity", "authenticationInfo"] }
+                : {}),
+            },
           },
         },
       }),

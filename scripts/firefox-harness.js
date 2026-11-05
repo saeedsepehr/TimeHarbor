@@ -37,6 +37,13 @@ void (async () => {
     let result = await call("read");
     assert(result.ok, "Read settings");
     const config = result.data.config;
+    config.profiles[0].breakEveryMinutes = 1;
+    config.profiles[0].breakMinutes = 1;
+    config.profiles[0].allowSkipBreak = true;
+    assert(
+      (await call("save", { config })).ok,
+      "Configure simultaneous break/quota test",
+    );
     const tab = await browser.tabs.create({
       url: "__SITE_URL__",
       active: true,
@@ -50,6 +57,19 @@ void (async () => {
       .reduce((n, [, v]) => n + v.usedMs, 0);
     assert(usage >= 5000 && usage <= 20000, "Foreground usage: " + usage);
     checks.push("real foreground accounting: " + Math.round(usage) + " ms");
+    await new Promise((r) => setTimeout(r, 6000));
+    result = await call("read");
+    const afterInactive = Object.values(result.data.state.days)
+      .flatMap((day) => Object.entries(day))
+      .filter(([h]) => h === "localhost")
+      .reduce((n, [, v]) => n + v.usedMs, 0);
+    assert(
+      Math.abs(afterInactive - usage) < 1000,
+      "Inactive website must stop immediately, without idle grace",
+    );
+    checks.push(
+      "background tab stops counting immediately, without the five-minute idle allowance",
+    );
     [...document.querySelectorAll(".nav-item")]
       .find((b) => b.textContent === "Settings")
       .click();
@@ -80,6 +100,8 @@ void (async () => {
       "Import without session must be rejected",
     );
     const imported = structuredClone(config);
+    imported.language = "fa";
+    imported.languageMode = "manual";
     imported.rules[0].id = "foreign-rule-id";
     const fileInput = document.querySelector(".transfer-card input[type=file]");
     const transfer = new DataTransfer();
@@ -128,10 +150,24 @@ void (async () => {
     await browser.tabs.update(home.id, { active: true });
     result = await call("public", { url: "__SITE_URL__" });
     assert(
+      result.data.current?.reason === "break",
+      "Simultaneous quota/break must show break first",
+    );
+    const breakUntil = result.data.current.breakUntil;
+    result = await call("breakSkip", {
+      ruleId: config.rules[0].id,
+      breakUntil,
+    });
+    assert(result.ok, "Allowed skip should complete the break");
+    result = await call("public", { url: "__SITE_URL__" });
+    assert(
       result.data.current?.reason === "quota",
       "Actual quota should expire after one minute",
     );
     checks.push("real quota expiry and rejection of pre-quota pauses");
+    checks.push(
+      "simultaneous break and quota expiry keeps the quota locked after skipping",
+    );
     result = await call("pause", {
       pin: "1234",
       minutes: 5,
@@ -142,6 +178,7 @@ void (async () => {
     assert(result.ok, "Resume failed");
     checks.push("PIN-protected pause and resume");
     config.language = "fa";
+    config.languageMode = "manual";
     config.rules[0].mode = "block";
     result = await call("save", { config, token });
     assert(result.ok, "Block save failed");

@@ -1,5 +1,72 @@
 import type { Language } from "./core.ts";
 const copy = {
+  cloudProgress: [
+    "Initial history sync is continuing in small batches. Local counting remains active.",
+    "همگام‌سازی اولیه تاریخچه در دسته‌های کوچک ادامه دارد؛ شمارش محلی فعال است.",
+  ],
+  eyebrow: ["YOUR TIME, WITH INTENTION", "وقتت، با انتخاب خودت"],
+  cloudTitle: [
+    "Google Drive sync & backup",
+    "همگام‌سازی و پشتیبان Google Drive",
+  ],
+  cloudHelp: [
+    "Optional sync of settings, domain-level usage reports and a shared website allowance. Each browser writes its own counters to avoid double counting. Your PIN and break confirmations remain local.",
+    "همگام‌سازی اختیاری تنظیمات، گزارش مصرف دامنه‌ها و سهمیه مشترک سایت‌ها. مصرف هر مرورگر جدا ثبت و ادغام می‌شود تا دوباره‌شماری نشود. پین و تأیید فعالیت استراحت محلی می‌مانند.",
+  ],
+  cloudSetup: [
+    "Google Drive connection is not activated in this development build. You can move settings with Export/Import in the meantime.",
+    "اتصال Google Drive در این نسخه آزمایشی فعال نیست. فعلاً می‌توانید تنظیمات را با خروجی و ورودی فایل منتقل کنید.",
+  ],
+  cloudConnected: [
+    "Connected · last successful sync",
+    "متصل · آخرین همگام‌سازی موفق",
+  ],
+  cloudConsent: [
+    "I agree to send recorded website domains and usage durations/timestamps to my Google Drive, according to my reporting scope. The OAuth service handles authorization only, not my browsing reports.",
+    "موافقم دامنه سایت‌های ثبت‌شده طبق دامنه گزارش‌گیری انتخابی و مدت‌ها و زمان‌های مصرفم در Google Drive خودم ذخیره شوند. سرویس OAuth فقط ورود را انجام می‌دهد، نه پردازش گزارش مرور.",
+  ],
+  cloudConnect: ["Connect Google account", "اتصال حساب گوگل"],
+  cloudInitial: ["When connecting", "هنگام اتصال"],
+  cloudRestore: [
+    "Use existing cloud settings if available",
+    "در صورت وجود، تنظیمات ابر را دریافت کن",
+  ],
+  cloudUseLocal: [
+    "Use this browser’s settings for all installations",
+    "تنظیمات این مرورگر برای همه نصب‌ها مبنا باشد",
+  ],
+  cloudConflict: [
+    "After the first connection, concurrent settings edits use a deterministic revision order. Reports and usage counters merge independently.",
+    "پس از اتصال اولیه، تغییر هم‌زمان تنظیمات با ترتیب نسخه‌ها حل می‌شود. گزارش‌ها و مصرف هر مرورگر مستقل از تنظیمات ادغام می‌شوند.",
+  ],
+  cloudSyncNow: ["Sync now", "همگام‌سازی اکنون"],
+  cloudDisconnect: ["Disconnect this browser", "قطع اتصال این مرورگر"],
+  cloudDisconnectHelp: [
+    "Remove this browser’s local authorization and stop cloud requests? Existing Google Drive backups and other browsers are not deleted or disconnected.",
+    "مجوز محلی این مرورگر حذف و درخواست‌های ابری متوقف شوند؟ پشتیبان موجود در Drive و اتصال مرورگرهای دیگر حذف نمی‌شوند.",
+  ],
+  cloudOffline: [
+    "Sync runs about once a minute when online. Offline use relies on the last known shared allowance; concurrent offline use can exceed the combined limit until reconnection. Cloud history covers up to 90 days; old backup files remain until removed through Google Drive app management.",
+    "در حالت آنلاین تقریباً هر دقیقه همگام می‌شود. آفلاین، آخرین سهمیه مشترک ملاک است؛ استفاده هم‌زمان آفلاین ممکن است تا اتصال دوباره از مجموع سهمیه بیشتر شود. تاریخچه ابری تا ۹۰ روز دریافت می‌شود؛ فایل‌های پشتیبان قدیمی تا حذف از مدیریت برنامه‌های Drive باقی می‌مانند.",
+  ],
+  cloudError: [
+    "Sync did not complete. Local counting continues; retry when connected.",
+    "همگام‌سازی کامل نشد. شمارش محلی ادامه دارد؛ پس از اتصال دوباره تلاش کنید.",
+  ],
+  cloudReauthorize: [
+    "Google authorization needs renewal. Disconnect and connect again when ready.",
+    "مجوز گوگل نیاز به تمدید دارد؛ در زمان مناسب اتصال را قطع و دوباره برقرار کنید.",
+  ],
+  cloudTimezone: ["Shared quota time zone", "منطقه زمانی سهمیه مشترک"],
+  browserLanguage: ["Use browser language", "زبان مرورگر"],
+  quotaAfterBreak: [
+    "The break ended, but this website’s time allowance is exhausted. Skipping a break does not reset the allowance.",
+    "استراحت تمام شد، ولی سهمیه مصرف این سایت تمام شده است. پرش از استراحت، سهمیه مصرف را بازنشانی نمی‌کند.",
+  ],
+  missingReturnUrl: [
+    "The original website address is unavailable. Open the website again from your browser.",
+    "آدرس اصلی سایت در دسترس نیست؛ سایت را دوباره از مرورگر باز کنید.",
+  ],
   about: ["About TimeHarbor", "درباره تایم‌هاربر"],
   aboutGuide: [
     "Meet the person behind TimeHarbor, find help, or share an idea.",
@@ -140,8 +207,8 @@ const copy = {
     "برای استفاده از وقفه، ابتدا در تنظیمات یک پین چهاررقمی تعریف کنید.",
   ],
   idleHelp: [
-    "If this website has no mouse, keyboard or scrolling activity and no media playing for this long, its usage timer stops. Activity starts it again.",
-    "اگر سایت به این مدت تعامل موس، صفحه‌کلید یا اسکرول و پخش رسانه نداشته باشد، شمارش مصرف متوقف می‌شود. با فعالیت دوباره ادامه پیدا می‌کند.",
+    "Only the visible tab in the focused browser window is counted. If it has no mouse, keyboard, scroll or media activity for this long, counting also pauses. Other tabs and minimized/unfocused windows stop immediately.",
+    "فقط تب قابل مشاهده در پنجره فعال محاسبه می‌شود. تب دیگر، پنجره غیرفعال یا مینیمایز فوراً از شمارش خارج می‌شود. این مهلت فقط برای بی‌فعالیتی هنگام حضور روی خود سایت است؛ فعالیت یا پخش رسانه شمارش را ادامه می‌دهد.",
   ],
   scopeHelp: [
     "“Only the website using this profile” blocks the site that triggered the break. “All ordinary websites” blocks ordinary HTTP(S) sites until that break is complete. Browser-internal pages are excluded.",

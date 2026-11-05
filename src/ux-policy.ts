@@ -31,7 +31,7 @@ export function noBreakProfile(c: Config): Profile {
       required: false,
       allowSkipBreak: false,
       checklist: [],
-      backgroundMedia: true,
+      backgroundMedia: false,
       idleMinutes: 5,
       reminderMinutes: 10,
     };

@@ -1,4 +1,4 @@
-import { dayKey, normalizeHost, PAUSE_MINUTES } from "./core.ts";
+import { dayKey, normalizeHost, PAUSE_MINUTES, defaultConfig } from "./core.ts";
 import type {
   Config,
   Language,
@@ -11,6 +11,7 @@ import { duration, languageNames, t } from "./i18n.ts";
 import { ux } from "./ux-copy.ts";
 import type { UxKey } from "./ux-copy.ts";
 import { blockedTarget } from "./network-policy.ts";
+import { chromium } from "./platform.ts";
 import {
   exportSettings,
   importSettings,
@@ -42,6 +43,23 @@ let lang: Language = "en",
   config: Config,
   state: State;
 let section: "sites" | "profiles" | "reports" | "settings" | "about" = "sites";
+interface CloudStatus {
+  configured: boolean;
+  enabled: boolean;
+  lastSync: number;
+  error: string;
+  busy: boolean;
+  timeZone: string;
+  partial?: boolean;
+}
+let cloudInfo: CloudStatus = {
+  configured: false,
+  enabled: false,
+  lastSync: 0,
+  error: "",
+  busy: false,
+  timeZone: "",
+};
 let currentUrl = "",
   editingRule: string | null = null;
 const openProfiles = new Set<string>();
@@ -239,7 +257,7 @@ function brand(): HTMLElement {
 function heading(title: string, subtitle: string): HTMLElement {
   const h = el("header", "heading");
   h.append(
-    el("div", "eyebrow", "YOUR TIME, WITH INTENTION"),
+    el("div", "eyebrow", u("eyebrow")),
     el("h1", "", title),
     el("p", "muted", subtitle),
   );
@@ -281,9 +299,14 @@ function withChange(change: (next: Config) => void): void {
   });
 }
 async function load(): Promise<void> {
-  const data = await request<{ config: Config; state: State }>("read");
+  const data = await request<{
+    config: Config;
+    state: State;
+    cloud?: CloudStatus;
+  }>("read");
   config = data.config;
   state = data.state;
+  if (data.cloud) cloudInfo = data.cloud;
   setLanguage(config.language);
   renderOptions();
 }
@@ -485,10 +508,6 @@ function profileEditor(
   const idle = numeric(profile?.idleMinutes ?? 5, 1, 60),
     reminder = numeric(profile?.reminderMinutes ?? 10, 1, 120),
     required = toggle(tr("required"), profile?.required ?? false),
-    background = toggle(
-      tr("backgroundMedia"),
-      profile?.backgroundMedia ?? true,
-    ),
     skip = toggle(
       u("allowSkip"),
       profile?.allowSkipBreak ?? false,
@@ -502,7 +521,7 @@ function profileEditor(
   checklist.rows = 3;
   checklist.name = "checklist";
   checklist.value = (
-    profile?.checklist ?? ["Drink water", "Take a walk", "Stretch"]
+    profile?.checklist ?? defaultConfig(lang).profiles[0]!.checklist
   ).join("\n");
   const grid = el("div", "form-grid");
   grid.append(
@@ -513,13 +532,7 @@ function profileEditor(
     field(tr("idle"), idle),
     field(tr("reminder"), reminder),
   );
-  f.append(
-    grid,
-    field(tr("checklist"), checklist),
-    required.node,
-    background.node,
-    skip.node,
-  );
+  f.append(grid, field(tr("checklist"), checklist), required.node, skip.node);
   const save = el("button", "button primary", tr("save"));
   save.type = "submit";
   f.append(save);
@@ -536,7 +549,7 @@ function profileEditor(
         .split("\n")
         .map((s) => s.trim())
         .filter(Boolean),
-      backgroundMedia: background.control.checked,
+      backgroundMedia: false,
       idleMinutes: Number(idle.value),
       reminderMinutes: Number(reminder.value),
     };
@@ -1146,7 +1159,10 @@ function reportsView(main: HTMLElement): void {
 function settingsView(main: HTMLElement): void {
   const box = card(),
     f = el("form", "stack"),
-    language = select(Object.entries(languageNames), config.language),
+    language = select(
+      [["auto", u("browserLanguage")], ...Object.entries(languageNames)],
+      config.languageMode === "browser" ? "auto" : config.language,
+    ),
     scope = select(
       [
         ["selected", tr("selected")],
@@ -1185,7 +1201,7 @@ function settingsView(main: HTMLElement): void {
             allowSkipBreak: false,
             checklist: p.checklist.length
               ? p.checklist
-              : ["Drink water", "Take a walk", "Stretch"],
+              : defaultConfig(lang).profiles[0]!.checklist,
           }));
           run(() => commit(next, newPin.value));
         }
@@ -1196,7 +1212,8 @@ function settingsView(main: HTMLElement): void {
   f.append(actions, el("p", "muted", tr("local")));
   formSubmit(f, async () => {
     const next = structuredClone(config);
-    next.language = language.value as Language;
+    next.languageMode = language.value === "auto" ? "browser" : "manual";
+    if (language.value !== "auto") next.language = language.value as Language;
     next.reportScope = scope.value as Config["reportScope"];
     next.retentionDays = Number(retention.value);
     next.pauseEnabled = pause.control.checked;
@@ -1266,6 +1283,112 @@ function settingsView(main: HTMLElement): void {
   );
   transfer.append(actionsTransfer);
   main.append(transfer);
+  cloudView(main);
+}
+function cloudView(main: HTMLElement): void {
+  const box = card();
+  box.classList.add("cloud-card");
+  if (cloudInfo.partial) box.append(el("p", "muted", u("cloudProgress")));
+  box.append(el("h2", "", u("cloudTitle")), el("p", "muted", u("cloudHelp")));
+  if (!cloudInfo.configured) {
+    box.append(el("p", "policy-summary", u("cloudSetup")));
+    if (!cloudInfo.enabled) {
+      main.append(box);
+      return;
+    }
+  } else if (cloudInfo.enabled)
+    box.append(
+      el(
+        "p",
+        "policy-summary",
+        u("cloudConnected") +
+          (cloudInfo.lastSync
+            ? " · " + new Date(cloudInfo.lastSync).toLocaleString(lang)
+            : ""),
+      ),
+    );
+  if (cloudInfo.error)
+    box.append(
+      el(
+        "p",
+        "error",
+        u(
+          cloudInfo.error === "GOOGLE_AUTH_REQUIRED"
+            ? "cloudReauthorize"
+            : "cloudError",
+        ),
+      ),
+    );
+  const actions = el("div", "actions");
+  if (!cloudInfo.enabled) {
+    const agree = toggle(u("cloudConsent"), false);
+    const preference = select(
+      [
+        ["cloud", u("cloudRestore")],
+        ["local", u("cloudUseLocal")],
+      ],
+      "cloud",
+    );
+    const connect = button(
+      u("cloudConnect"),
+      () =>
+        run(async () => {
+          if (!agree.control.checked) throw Error(u("cloudConsent"));
+          if (
+            !chromium &&
+            !(await browser.permissions.request({
+              data_collection: ["browsingActivity", "authenticationInfo"],
+            }))
+          )
+            throw Error(u("cloudConsent"));
+          const prepared = await request<{ url: string }>("cloudPrepare");
+          const returned = await browser.identity.launchWebAuthFlow({
+            url: prepared.url,
+            interactive: true,
+          });
+          await request("cloudComplete", {
+            returned,
+            preference: preference.value,
+          });
+          await load();
+        }),
+      "button primary",
+    );
+    connect.disabled = !cloudInfo.configured;
+    box.append(
+      agree.node,
+      field(u("cloudInitial"), preference, u("cloudConflict")),
+    );
+    actions.append(connect);
+  } else {
+    actions.append(
+      button(u("cloudSyncNow"), () =>
+        run(async () => {
+          await request("cloudSync");
+          await load();
+        }),
+      ),
+      button(
+        u("cloudDisconnect"),
+        () =>
+          confirmChange(
+            u("cloudDisconnect"),
+            u("cloudDisconnectHelp"),
+            async () => {
+              await request("cloudDisconnect");
+              await load();
+            },
+          ),
+        "button danger",
+      ),
+    );
+    box.append(
+      el("p", "muted", u("cloudOffline")),
+      el("small", "muted", u("cloudTimezone") + ": " + cloudInfo.timeZone),
+    );
+  }
+  box.append(actions);
+  main.append(box);
 }
 function aboutView(main: HTMLElement): void {
   const box = card();
@@ -1310,6 +1433,31 @@ function throwError(text: string): void {
 let publicViewKey = "",
   activeBreak: Verdict | null = null,
   activityStage = "";
+async function leaveBreak(
+  type: "breakDone" | "breakSkip",
+  v: Verdict,
+): Promise<void> {
+  await request(type, {
+    ruleId: v.ruleId,
+    breakUntil: v.breakUntil,
+    checks: [...checks],
+  });
+  const data = await request<PublicData>("public", { url: currentUrl });
+  if (data.current?.blocked) {
+    await renderPublic();
+    if (data.current.reason === "quota") announce(u("quotaAfterBreak"));
+    return;
+  }
+  if (!currentUrl) throw Error(u("missingReturnUrl"));
+  const target = new URL(currentUrl);
+  if (
+    !["http:", "https:"].includes(target.protocol) ||
+    target.username ||
+    target.password
+  )
+    throw Error(u("missingReturnUrl"));
+  location.replace(target.href);
+}
 function pauseForm(data: PublicData): HTMLElement {
   const box = card();
   box.classList.add("pause-card");
@@ -1574,14 +1722,7 @@ async function renderPublic(): Promise<void> {
       activities.id = "break-activities";
       const done = button(
         tr("continue"),
-        () =>
-          run(async () => {
-            await request("breakDone", {
-              ruleId: v.ruleId,
-              checks: [...checks],
-            });
-            location.replace(currentUrl);
-          }),
+        () => run(() => leaveBreak("breakDone", v)),
         "button primary wide",
       );
       done.id = "finish-break";
@@ -1591,14 +1732,7 @@ async function renderPublic(): Promise<void> {
       if (v.allowSkip) {
         const skip = button(
           u("skip"),
-          () =>
-            run(async () => {
-              await request("breakSkip", {
-                ruleId: v.ruleId,
-                breakUntil: v.breakUntil,
-              });
-              location.replace(currentUrl);
-            }),
+          () => run(() => leaveBreak("breakSkip", v)),
           "button subtle wide",
         );
         skip.id = "skip-break";

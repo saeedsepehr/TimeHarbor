@@ -1,12 +1,14 @@
 import { validateConfig } from "./core.ts";
 import type { Config } from "./core.ts";
 export const MAX_SETTINGS_BYTES = 1_048_576;
-function cleanConfig(value: unknown): Config {
+export function cleanConfig(value: unknown): Config {
   const c = validateConfig(value);
   // Whitelist settings only; never include credentials, sessions or browsing records.
   return {
     version: c.version,
     language: c.language,
+    languageMode: c.languageMode ?? "manual",
+    ...(c.timeZone ? { timeZone: c.timeZone } : {}),
     reportScope: c.reportScope,
     retentionDays: c.retentionDays,
     pauseEnabled: c.pauseEnabled,
