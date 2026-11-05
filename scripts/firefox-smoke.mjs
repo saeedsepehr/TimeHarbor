@@ -89,6 +89,9 @@ const server = createServer(async (req, res) => {
           "/ui/app.js",
           "/ui/app.css",
           "/icon.svg",
+          "/fonts/vazir/Vazir-Regular.woff2",
+          "/fonts/vazir/Vazir-Medium.woff2",
+          "/fonts/vazir/Vazir-Bold.woff2",
         ].includes(file)
       ) {
         res.statusCode = 404;
@@ -117,7 +120,9 @@ const server = createServer(async (req, res) => {
             ? "application/javascript"
             : file.endsWith(".css")
               ? "text/css"
-              : "image/svg+xml",
+              : file.endsWith(".woff2")
+                ? "font/woff2"
+                : "image/svg+xml",
       );
       res.end(contents);
       return;

@@ -1,3 +1,27 @@
+@font-face {
+  font-family: "Vazir";
+  src: url("../fonts/vazir/Vazir-Regular.woff2") format("woff2");
+  font-weight: 100 499;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Vazir";
+  src: url("../fonts/vazir/Vazir-Medium.woff2") format("woff2");
+  font-weight: 500 599;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Vazir";
+  src: url("../fonts/vazir/Vazir-Bold.woff2") format("woff2");
+  font-weight: 600 900;
+  font-style: normal;
+  font-display: swap;
+}
+:root:lang(fa) {
+  font-family: "Vazir", Tahoma, system-ui, sans-serif;
+}
 :root {
   font-family: Inter, "Segoe UI", Tahoma, system-ui, sans-serif;
   color: #262b49;
