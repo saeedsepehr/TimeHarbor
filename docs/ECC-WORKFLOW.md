@@ -17,6 +17,10 @@ The `ECC FIREFOX WORKFLOW` block disables unrelated skill paths, migrated comman
 
 Native installation applies to Codex sessions using this user home. This curated ECC selection therefore applies to other local chats using the same home as well. The bundled files remain intact in the cache; disabled skills are excluded from normal use. No second copied-skill installation is present.
 
+## Project usage policy
+
+ECC is retained as a lightweight, on-demand reference. Simple text, style and metadata edits need focused verification, not the full workflow or skill loading. Substantial timing, state, enforcement and security changes need relevant project tests and review, with ECC references selected only where useful. Empty settings, tab/window changes, restart recovery and simultaneous quota/break expiry are priority regression scenarios. Hooks, automatic memory/learning and extra agents stay disabled. This policy changes project instructions, not global plugin settings.
+
 ## Invoking skills
 
 The actual app-server discovery names include the `ecc:` namespace:
@@ -58,6 +62,6 @@ Machine-local setup reports and receipts live under ignored outputs/ and work/ d
 - Chrome DevTools MCP is disabled. Firefox testing must use Firefox-compatible tooling; CDP tooling does not establish Firefox extension behavior.
 - The six skill bodies contain examples for other stacks and Unix shells. Use the project's actual package manager, PowerShell, tools and relevant checks; do not blindly run examples or add dependencies.
 - The version-specific disabled paths must be reconciled when upgrading ECC. First inspect `codex plugin list --json`, back up config, review upstream changes, upgrade deliberately, update selectors and rerun verification before using a new version. Do not run a marketplace upgrade without rechecking the selected skill set and hook/MCP policy.
-- No extension build or cross-platform browser test exists yet; those are not installation prerequisites and have not been claimed to pass.
+- Extension build and isolated Windows Firefox/Chromium checks now exist. Run checks appropriate to the change; Windows results do not establish macOS/Linux behavior. See docs/validation.md for validation details.
 
 Sources: https://github.com/affaan-m/ECC/blob/main/.codex-plugin/README.md and https://learn.chatgpt.com/docs/build-skills.
