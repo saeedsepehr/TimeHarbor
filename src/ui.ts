@@ -1409,6 +1409,16 @@ function aboutView(main: HTMLElement): void {
     [u("bugReport"), "https://github.com/saeedsepehr/TimeHarbor/issues"],
   ]) {
     const a = el("a", "button", label);
+    const icon = el("img", "social-icon");
+    const service = url!.includes("/issues")
+      ? "feedback"
+      : new URL(url!).hostname.split(".").filter((part) => part !== "www")[0]!;
+    const iconName = service === "t" ? "telegram" : service;
+    icon.src = "../icons/social/" + iconName + ".svg";
+    icon.alt = "";
+    icon.width = 20;
+    icon.height = 20;
+    a.prepend(icon);
     a.href = url!;
     a.target = "_blank";
     a.rel = "noopener noreferrer";

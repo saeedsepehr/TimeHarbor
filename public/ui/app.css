@@ -907,3 +907,23 @@ td {
     flex-direction: column;
   }
 }
+
+/* Contact links share a consistent icon and text alignment in both directions. */
+.social-links {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr));
+}
+.social-links a {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 10px;
+  min-width: 0;
+  text-align: start;
+}
+.social-icon {
+  flex: 0 0 20px;
+}
+.page-guide {
+  max-width: none;
+}
