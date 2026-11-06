@@ -374,7 +374,7 @@ function renderOptions(): void {
       "button subtle",
     ),
   );
-  const main = el("main", "main");
+  const main = el("main", section === "about" ? "main main-about" : "main");
   main.append(
     heading(section === "about" ? u("about") : tr(section), tr("intro")),
   );
@@ -408,7 +408,7 @@ function renderOptions(): void {
     s.append(el("span", "muted", label), el("strong", "", value));
     stats.append(s);
   }
-  main.append(stats);
+  if (section !== "about") main.append(stats);
   if (section === "sites") sitesView(main);
   else if (section === "profiles") profilesView(main);
   else if (section === "reports") reportsView(main);
