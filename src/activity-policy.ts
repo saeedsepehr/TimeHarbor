@@ -27,3 +27,25 @@ export function chargeEnd(
     ),
   );
 }
+import { profileFor, resolveRule } from "./core.ts";
+import type { Config } from "./core.ts";
+
+export function usageReminderInterval(
+  config: Config,
+  host: string,
+  foreground: boolean,
+  blocked: boolean,
+  now: number,
+  pauseUntil: number,
+): number | null {
+  const rule = resolveRule(config, host);
+  if (
+    !rule ||
+    rule.mode !== "limit" ||
+    !foreground ||
+    blocked ||
+    now < pauseUntil
+  )
+    return null;
+  return profileFor(config, rule).reminderMinutes * 60_000;
+}

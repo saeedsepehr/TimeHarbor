@@ -22,7 +22,11 @@ import { prepareImport } from "./transfer.ts";
 import { networkRules } from "./network-policy.ts";
 import type { NetworkRule } from "./network-policy.ts";
 import { chromium } from "./platform.ts";
-import { browserLanguage, chargeEnd } from "./activity-policy.ts";
+import {
+  browserLanguage,
+  chargeEnd,
+  usageReminderInterval,
+} from "./activity-policy.ts";
 import { GoogleDrive } from "./drive.ts";
 import { exchange, newestSettings } from "./cloud-exchange.ts";
 import type { CacheEntry } from "./cloud-exchange.ts";
@@ -292,7 +296,13 @@ function advance(now: number): void {
     const foreground =
       focusedWindow === sample.windowId &&
       activeTabs.get(sample.windowId) === tabId;
-    const end = chargeEnd(sample, foreground, from, now, profile.idleMinutes);
+    const end = chargeEnd(
+      sample,
+      foreground,
+      from,
+      now,
+      profile?.idleMinutes ?? 5,
+    );
     if (end > from) {
       const host = rule?.host ?? sample.host;
       intervals.set(host, Math.max(intervals.get(host) ?? from, end));
@@ -595,12 +605,24 @@ async function message(
     const data = publicData(host, now) as {
       current: { blocked: boolean } | null;
     };
-    const rule = resolveRule(config, host),
-      p = rule ? profileFor(config, rule) : config.profiles[0]!;
-    const previousReminder = reminders.get(sender.tab.id) ?? now;
-    if (!reminders.has(sender.tab.id)) reminders.set(sender.tab.id, now);
-    const remind = now - previousReminder >= p.reminderMinutes * 60_000;
-    if (remind) reminders.set(sender.tab.id, now);
+    const interval = usageReminderInterval(
+      config,
+      host,
+      msg.visible === true &&
+        focusedWindow === sender.tab.windowId &&
+        activeTabs.get(sender.tab.windowId) === sender.tab.id,
+      data.current?.blocked === true,
+      now,
+      state.pauseUntil,
+    );
+    let remind = false;
+    if (interval === null) {
+      reminders.delete(sender.tab.id);
+    } else {
+      const previousReminder = reminders.get(sender.tab.id) ?? now;
+      remind = now - previousReminder >= interval;
+      reminders.set(sender.tab.id, remind ? now : previousReminder);
+    }
     await enforce(now);
     await save();
     return { ...data, remind };

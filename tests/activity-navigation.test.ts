@@ -60,3 +60,40 @@ test("simultaneous quota and break expiry: skipping leaves the quota lock in pla
   skipBreak(c, s, "video", 180001);
   assert.equal(evaluate(c, s, "youtube.com", 180002).reason, "quota");
 });
+
+test("usage reminders require a configured limited foreground site", async () => {
+  const { usageReminderInterval } = await import("../src/activity-policy.ts");
+  const c = defaultConfig();
+  c.rules = [];
+  c.profiles = [];
+  assert.equal(
+    usageReminderInterval(c, "github.com", true, false, 1000, 0),
+    null,
+  );
+  const configured = defaultConfig();
+  configured.rules = [
+    {
+      id: "video",
+      host: "youtube.com",
+      mode: "limit",
+      minutes: 60,
+      reset: "daily",
+      hours: 6,
+      profileId: "balanced",
+    },
+  ];
+  const interval = (
+    host: string,
+    foreground = true,
+    blocked = false,
+    pause = 0,
+  ) =>
+    usageReminderInterval(configured, host, foreground, blocked, 1000, pause);
+  assert.equal(interval("github.com"), null);
+  assert.equal(interval("www.youtube.com"), 600000);
+  assert.equal(interval("youtube.com", false), null);
+  assert.equal(interval("youtube.com", true, true), null);
+  assert.equal(interval("youtube.com", true, false, 2000), null);
+  configured.rules[0]!.mode = "block";
+  assert.equal(interval("youtube.com"), null);
+});
